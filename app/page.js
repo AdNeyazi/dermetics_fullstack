@@ -1,45 +1,66 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
-const TABS = [
+const DEFAULT_TABS = [
   { key: 'premium', label: 'Premium' },
   { key: 'ultra', label: 'Ultra Premium' },
   { key: 'super', label: 'Super Ultra Premium Luxury' },
 ]
 
-const INTROS = {
-  premium: {
-    title: 'The Universal Essentials',
-    text: 'A refined foundation of everyday luxuries \u2014 timeless formulations crafted to hydrate, protect and reveal the skin\u2019s natural brilliance.',
-  },
-  ultra: {
-    title: 'Precision Longevity',
-    text: 'Advanced, science-led actives engineered to defend against ageing at the cellular level \u2014 for those who demand more from their ritual.',
-  },
+const DEFAULT_CONTENT = {
+  heroTitle: 'DERMATICS',
+  heroSub: 'The Art & Science of Bespoke Skincare',
+  flagshipTitle: 'MY SKIN MY FORMULATION',
+  flagshipSub: 'Customise Skin Care Solution For Skin Lovers',
+  whatTitle: 'What is My Skin My Formulation?',
+  whatText: '',
+  whyTitle: 'Why My Skin My Formulation?',
+  whyText: '',
+  process: [],
+  feedbackTitle: 'Infinite Perfection Guarantee',
+  feedbackText: '',
+  footerHeading: 'Ready For Your Bespoke Formulation?',
+  footerText: 'Speak with our concierge and begin a skincare ritual designed entirely around you.',
+  phone: '+91 98765 43210',
 }
 
-const PROCESS = [
-  { n: '01', title: 'Book Dermatologist Consultation', text: 'A one-on-one session where our dermatologist maps your skin type, concerns and goals in detail.' },
-  { n: '02', title: 'Scientific Board Review', text: 'Our scientific board reviews your diagnosis and architects a formula tailored precisely to your skin.' },
-  { n: '03', title: 'Custom Compounding & Approval', text: 'Your bespoke formula is hand-compounded in small batches and approved for potency and safety.' },
-  { n: '04', title: 'Home Delivery & Evaluation', text: 'Delivered to your door, followed by a structured evaluation to refine and perfect your results.' },
-]
+/* ---------- analytics ---------- */
+function getSid() {
+  if (typeof window === 'undefined') return null
+  let sid = localStorage.getItem('dermatics_sid')
+  if (!sid) {
+    sid = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())
+    localStorage.setItem('dermatics_sid', sid)
+  }
+  return sid
+}
+function track(event_type, metadata = {}) {
+  try {
+    fetch('/api/analytics/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ event_type, page: '/', metadata, session_id: getSid(), referrer: typeof document !== 'undefined' ? document.referrer : '', device: typeof navigator !== 'undefined' ? navigator.userAgent : '' }),
+    })
+  } catch { /* ignore */ }
+}
 
-const Header = ({ onBook }) => (
-  <header className="header">
-    <div className="container header-inner">
-      <div className="brand gold-text">DERMATICS</div>
-      <a className="btn-pill" href="tel:+919876543210">Book Appointment: +91 98765 43210</a>
-    </div>
-  </header>
-)
+const Header = ({ phone }) => {
+  const tel = 'tel:' + (phone || '').replace(/\s+/g, '')
+  return (
+    <header className="header">
+      <div className="container header-inner">
+        <div className="brand gold-text">DERMATICS</div>
+        <a className="btn-pill" href={tel} onClick={() => track('cta_click', { location: 'header' })}>Book Appointment: {phone}</a>
+      </div>
+    </header>
+  )
+}
 
 const ProductCard = ({ p, onInquire }) => (
   <div className="product-card">
-    <div className="product-img">
-      <img src={p.imageUrl} alt={p.name} />
-    </div>
+    <div className="product-img"><img src={p.imageUrl} alt={p.name} /></div>
     <div className="product-body">
       <span className="product-tag">{p.tag}</span>
       <h3 className="product-name">{p.name}</h3>
@@ -131,89 +152,102 @@ const ConsultationModal = ({ open, onClose, product }) => {
 
 function App() {
   const [active, setActive] = useState('premium')
+  const [tabs, setTabs] = useState(DEFAULT_TABS)
+  const [intros, setIntros] = useState({})
+  const [content, setContent] = useState(DEFAULT_CONTENT)
   const [products, setProducts] = useState([])
   const [team, setTeam] = useState([])
   const [faqs, setFaqs] = useState([])
   const [openFaq, setOpenFaq] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [modalProduct, setModalProduct] = useState(null)
+  const viewed = useRef(false)
 
   useEffect(() => {
-    fetch('/api/products').then((r) => r.json()).then(setProducts).catch(() => {})
-    fetch('/api/team').then((r) => r.json()).then(setTeam).catch(() => {})
-    fetch('/api/faqs').then((r) => r.json()).then(setFaqs).catch(() => {})
+    if (!viewed.current) { viewed.current = true; track('page_view', {}) }
+    fetch('/api/products').then((r) => r.json()).then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api/team').then((r) => r.json()).then((d) => setTeam(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api/faqs').then((r) => r.json()).then((d) => setFaqs(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api/content').then((r) => r.json()).then((d) => { if (d && d.key) setContent(d) }).catch(() => {})
+    fetch('/api/categories').then((r) => r.json()).then((d) => {
+      if (Array.isArray(d) && d.length) {
+        setTabs(d.map((c) => ({ key: c.key, label: c.label })))
+        const m = {}
+        d.forEach((c) => { m[c.key] = { title: c.introTitle, text: c.introText } })
+        setIntros(m)
+      }
+    }).catch(() => {})
   }, [])
 
   const openInquiry = useCallback((p) => {
+    if (p) track('inquiry', { name: p.name, tier: p.tier })
+    else track('cta_click', { location: 'bespoke' })
     setModalProduct(p || null)
     setModalOpen(true)
   }, [])
 
+  const switchTab = (key) => {
+    setActive(key)
+    setOpenFaq(null)
+    track('tab_switch', { tier: key })
+  }
+
   const tierProducts = products.filter((p) => p.tier === active)
+  const intro = intros[active] || {}
+  const tel = 'tel:' + (content.phone || '').replace(/\s+/g, '')
 
   return (
     <div className="page">
       <div className="ambient-glow" />
-      <Header />
+      <Header phone={content.phone} />
 
       <main className="container">
         {active !== 'super' && (
           <section className="hero">
-            <h1 className="gold-text">DERMATICS</h1>
-            <p className="sub">The Art & Science of Bespoke Skincare</p>
+            <h1 className="gold-text">{content.heroTitle}</h1>
+            <p className="sub">{content.heroSub}</p>
           </section>
         )}
 
         <div className="switcher-wrap">
           <div className="switcher">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                className={active === t.key ? 'active' : ''}
-                onClick={() => { setActive(t.key); setOpenFaq(null) }}
-              >
-                {t.label}
-              </button>
+            {tabs.map((t) => (
+              <button key={t.key} className={active === t.key ? 'active' : ''} onClick={() => switchTab(t.key)}>{t.label}</button>
             ))}
           </div>
         </div>
 
-        {active === 'premium' || active === 'ultra' ? (
+        {active !== 'super' ? (
           <section className="view" key={active}>
             <div className="section-intro">
-              <h2 className="gold-text">{INTROS[active].title}</h2>
-              <p>{INTROS[active].text}</p>
+              <h2 className="gold-text">{intro.title}</h2>
+              <p>{intro.text}</p>
             </div>
             <div className="product-grid">
-              {tierProducts.map((p) => (
-                <ProductCard key={p.id} p={p} onInquire={openInquiry} />
-              ))}
+              {tierProducts.map((p) => (<ProductCard key={p.id} p={p} onInquire={openInquiry} />))}
             </div>
           </section>
         ) : (
           <section className="view" key="super">
-            {/* Flagship hero */}
             <div className="flagship-hero">
-              <h1 className="gold-text">MY SKIN<br />MY FORMULATION</h1>
-              <p className="sub">Customise Skin Care Solution For Skin Lovers</p>
+              <h1 className="gold-text">{(content.flagshipTitle || '').split(' ').length > 2 ? <>{content.flagshipTitle.split(' ').slice(0, 2).join(' ')}<br />{content.flagshipTitle.split(' ').slice(2).join(' ')}</> : content.flagshipTitle}</h1>
+              <p className="sub">{content.flagshipSub}</p>
             </div>
 
-            {/* Article blocks */}
             <div className="article-blocks">
               <div className="article-block">
-                <h3 className="gold-text">What is My Skin My Formulation?</h3>
-                <p>My Skin My Formulation is our flagship bespoke service where your skincare is created entirely around you. Instead of choosing from ready-made products, you receive a formulation designed from your own dermatological diagnosis \u2014 a single, precise solution compounded to match your skin\u2019s exact needs, concerns and goals.</p>
+                <h3 className="gold-text">{content.whatTitle}</h3>
+                <p>{content.whatText}</p>
               </div>
               <div className="article-block">
-                <h3 className="gold-text">Why My Skin My Formulation?</h3>
-                <p>Because no two skins are the same. Generic products treat an average; a bespoke formulation treats you. By uniting dermatology, cosmetic chemistry and longevity science, we craft a ritual that evolves with your skin \u2014 delivering results that mass-market luxury simply cannot promise.</p>
+                <h3 className="gold-text">{content.whyTitle}</h3>
+                <p>{content.whyText}</p>
               </div>
             </div>
 
-            {/* Process */}
             <h2 className="block-heading gold-text">How It Works</h2>
             <div className="process-grid">
-              {PROCESS.map((s) => (
+              {(content.process || []).map((s) => (
                 <div className="process-step" key={s.n}>
                   <span className="process-num">{s.n}</span>
                   <h4>{s.title}</h4>
@@ -222,20 +256,16 @@ function App() {
               ))}
             </div>
 
-            {/* Feedback banner */}
             <div className="feedback-banner">
-              <h3 className="gold-text">Infinite Perfection Guarantee</h3>
-              <p>Aapki skin ki journey humari zimmedari hai. Agar aapko apni formulation perfect na lage, toh hum aapki feedback lekar use baar-baar refine karenge \u2014 bina kisi extra cost ke. Kyunki perfection ek destination nahi, ek continuous feedback loop hai, aur hum tab tak nahi rukte jab tak aapki skin bilkul perfect na ho jaaye.</p>
+              <h3 className="gold-text">{content.feedbackTitle}</h3>
+              <p>{content.feedbackText}</p>
             </div>
 
-            {/* Team */}
             <h2 className="block-heading gold-text">The Master Minds</h2>
             <div className="team-grid">
               {team.map((m) => (
                 <div className="team-member" key={m.id}>
-                  <div className="team-photo">
-                    <img src={m.imageUrl} alt={m.name} />
-                  </div>
+                  <div className="team-photo"><img src={m.imageUrl} alt={m.name} /></div>
                   <h4>{m.name}</h4>
                   <div className="team-role">{m.role}</div>
                   <p className="team-bio">{m.bio}</p>
@@ -243,7 +273,6 @@ function App() {
               ))}
             </div>
 
-            {/* FAQ */}
             <h2 className="block-heading gold-text">Frequently Asked Questions</h2>
             <div className="faq-wrap">
               {faqs.map((f, i) => (
@@ -258,12 +287,11 @@ function App() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="footer">
         <div className="container">
-          <h2 className="gold-text">Ready For Your Bespoke Formulation?</h2>
-          <p>Speak with our concierge and begin a skincare ritual designed entirely around you.</p>
-          <a className="btn-pill solid" href="tel:+919876543210">Book Phone Consultation: +91 98765 43210</a>
+          <h2 className="gold-text">{content.footerHeading}</h2>
+          <p>{content.footerText}</p>
+          <a className="btn-pill solid" href={tel} onClick={() => track('cta_click', { location: 'footer' })}>Book Phone Consultation: {content.phone}</a>
           <div className="copyright">&copy; {new Date().getFullYear()} DERMATICS. All Rights Reserved. Crafted for Skin Lovers.</div>
         </div>
       </footer>
