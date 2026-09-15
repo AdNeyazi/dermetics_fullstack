@@ -8,10 +8,12 @@ import {
 const NAV = [
   { key: 'overview', label: 'Overview' },
   { key: 'products', label: 'Products' },
+  { key: 'packages', label: 'Packages' },
   { key: 'categories', label: 'Categories' },
   { key: 'content', label: 'Website Content' },
   { key: 'users', label: 'Users' },
   { key: 'inquiries', label: 'Inquiries' },
+  { key: 'diagnostics', label: 'Consultations' },
 ]
 
 const TIER_LABELS = { premium: 'Premium', ultra: 'Ultra Premium', super: 'Super Ultra Premium' }
@@ -175,11 +177,14 @@ function Products() {
 }
 
 function ProductModal({ product, onClose, onSave }) {
-  const [f, setF] = useState(product)
+  const [f, setF] = useState({ ...product, variants: Array.isArray(product.variants) ? product.variants : [] })
   const set = (k, v) => setF({ ...f, [k]: v })
+  const setVar = (i, k, v) => { const arr = [...f.variants]; arr[i] = { ...arr[i], [k]: v }; setF({ ...f, variants: arr }) }
+  const addVar = () => setF({ ...f, variants: [...f.variants, { label: '', price: '' }] })
+  const rmVar = (i) => setF({ ...f, variants: f.variants.filter((_, idx) => idx !== i) })
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560, maxHeight: '88vh', overflowY: 'auto' }}>
         <button className="modal-close" onClick={onClose}>&times;</button>
         <h3 className="gold-text">{product.id ? 'Edit Product' : 'New Product'}</h3>
         <div className="content-form" style={{ marginTop: 20 }}>
@@ -193,14 +198,157 @@ function ProductModal({ product, onClose, onSave }) {
           </div>
           <div className="field"><label>Tag</label><input value={f.tag} onChange={(e) => set('tag', e.target.value)} /></div>
           <div className="field"><label>Description</label><textarea value={f.description} onChange={(e) => set('description', e.target.value)} /></div>
-          <div className="field"><label>Price ($)</label><input type="number" value={f.price} onChange={(e) => set('price', e.target.value)} /></div>
+          <div className="field"><label>Base Price ($)</label><input type="number" value={f.price} onChange={(e) => set('price', e.target.value)} /></div>
           <div className="field"><label>Image URL</label><input value={f.imageUrl} onChange={(e) => set('imageUrl', e.target.value)} placeholder="https://..." /></div>
+          <div className="field">
+            <label>Variants (optional — e.g. SPF 30 / 50)</label>
+            {f.variants.map((v, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <input style={{ flex: 2 }} placeholder="Label (e.g. SPF 50)" value={v.label} onChange={(e) => setVar(i, 'label', e.target.value)} />
+                <input style={{ flex: 1 }} type="number" placeholder="Price" value={v.price} onChange={(e) => setVar(i, 'price', e.target.value)} />
+                <button className="btn-sm danger" type="button" onClick={() => rmVar(i)} style={{ margin: 0 }}>Remove</button>
+              </div>
+            ))}
+            <button className="btn-sm" type="button" onClick={addVar}>+ Add Variant</button>
+          </div>
         </div>
         <div className="save-bar">
           <button className="btn-pill solid" onClick={() => onSave(f)}>Save Product</button>
           <button className="btn-sm" onClick={onClose}>Cancel</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ---------------- PACKAGES (admin) ---------------- */
+function Packages() {
+  const [items, setItems] = useState([])
+  const [editing, setEditing] = useState(null)
+  const load = useCallback(() => { api('/api/packages').then((d) => setItems(Array.isArray(d) ? d : [])).catch(() => {}) }, [])
+  useEffect(() => { load() }, [load])
+  const save = async (pkg) => {
+    const isNew = !pkg.id
+    const payload = { ...pkg, features: (typeof pkg.features === 'string' ? pkg.features.split('\n') : pkg.features).map((s) => String(s).trim()).filter(Boolean) }
+    await api(isNew ? '/api/admin/packages' : `/api/admin/packages/${pkg.id}`, { method: isNew ? 'POST' : 'PUT', body: JSON.stringify(payload) })
+    setEditing(null); load()
+  }
+  const del = async (id) => { if (confirm('Delete this package?')) { await api(`/api/admin/packages/${id}`, { method: 'DELETE' }); load() } }
+  return (
+    <div>
+      <div className="dash-toolbar">
+        <div />
+        <button className="btn-sm gold" onClick={() => setEditing({ name: '', price: '', description: '', recommended: false, features: [], order: items.length + 1 })}>+ Add Package</button>
+      </div>
+      <div className="packages-grid" style={{ marginBottom: 0 }}>
+        {items.map((pkg) => (
+          <div className={`package-card ${pkg.recommended ? 'recommended' : ''}`} key={pkg.id}>
+            {pkg.recommended && <span className="package-badge">Recommended</span>}
+            <h3 className="package-name gold-text">{pkg.name}</h3>
+            <p className="package-desc">{pkg.description}</p>
+            <div className="package-price gold-text"><span className="cur">$</span>{Number(pkg.price).toLocaleString()}</div>
+            <div className="package-per">Program Fee</div>
+            <ul className="package-features">
+              {(pkg.features || []).map((ft, i) => (<li key={i}><span className="tick">&#10003;</span><span>{ft}</span></li>))}
+            </ul>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-sm" onClick={() => setEditing(pkg)}>Edit</button>
+              <button className="btn-sm danger" onClick={() => del(pkg.id)}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {editing && <PackageModal pkg={editing} onClose={() => setEditing(null)} onSave={save} />}
+    </div>
+  )
+}
+
+function PackageModal({ pkg, onClose, onSave }) {
+  const [f, setF] = useState({ ...pkg, features: Array.isArray(pkg.features) ? pkg.features.join('\n') : (pkg.features || '') })
+  const set = (k, v) => setF({ ...f, [k]: v })
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540, maxHeight: '88vh', overflowY: 'auto' }}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+        <h3 className="gold-text">{pkg.id ? 'Edit Package' : 'New Package'}</h3>
+        <div className="content-form" style={{ marginTop: 20 }}>
+          <div className="field"><label>Name</label><input value={f.name} onChange={(e) => set('name', e.target.value)} /></div>
+          <div className="field"><label>Price ($)</label><input type="number" value={f.price} onChange={(e) => set('price', e.target.value)} /></div>
+          <div className="field"><label>Description</label><textarea value={f.description} onChange={(e) => set('description', e.target.value)} /></div>
+          <div className="field"><label>Features (one per line)</label><textarea style={{ minHeight: 140 }} value={f.features} onChange={(e) => set('features', e.target.value)} /></div>
+          <div className="field"><label style={{ display: 'flex', gap: 10, alignItems: 'center', textTransform: 'none', letterSpacing: 0 }}><input type="checkbox" checked={!!f.recommended} onChange={(e) => set('recommended', e.target.checked)} style={{ width: 18, height: 18, accentColor: '#d4af37' }} /> Mark as Recommended</label></div>
+          <div className="field"><label>Order</label><input type="number" value={f.order} onChange={(e) => set('order', Number(e.target.value))} /></div>
+        </div>
+        <div className="save-bar">
+          <button className="btn-pill solid" onClick={() => onSave(f)}>Save Package</button>
+          <button className="btn-sm" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------------- DIAGNOSTIC CONSULTATIONS (admin) ---------------- */
+const STATUSES = ['New', 'In Review', 'Formulated', 'Delivered']
+function Diagnostics() {
+  const [items, setItems] = useState([])
+  const [detail, setDetail] = useState(null)
+  const load = useCallback(() => { api('/api/admin/diagnostic-consultations').then((d) => setItems(Array.isArray(d) ? d : [])).catch(() => {}) }, [])
+  useEffect(() => { load() }, [load])
+  const setStatus = async (id, status) => { await api(`/api/admin/diagnostic-consultations/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); load(); setDetail((d) => d && d.id === id ? { ...d, status } : d) }
+  const openFile = (fileId) => { window.open(`/api/admin/secure-file/${fileId}`, '_blank', 'noopener') }
+  return (
+    <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+      <table className="dash-table">
+        <thead><tr><th>Name</th><th>Contact</th><th>Files</th><th>Status</th><th>Date</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+        <tbody>
+          {items.length === 0 && <tr><td colSpan={6} style={{ color: '#a3a3a3', padding: 24 }}>No diagnostic submissions yet.</td></tr>}
+          {items.map((c) => (
+            <tr key={c.id}>
+              <td>{c.fullName}</td>
+              <td style={{ color: '#a3a3a3' }}>{c.phone}<br />{c.email}</td>
+              <td>{(c.reportFileIds?.length || 0) + (c.facePhotoFileIds?.length || 0)}</td>
+              <td><span className={`status-pill status-${(c.status || 'New').replace(/\s/g, '')}`}>{c.status || 'New'}</span></td>
+              <td style={{ color: '#a3a3a3', fontSize: 12 }}>{new Date(c.createdAt).toLocaleDateString()}</td>
+              <td style={{ textAlign: 'right' }}><button className="btn-sm" onClick={() => setDetail(c)}>View</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {detail && (
+        <div className="modal-overlay" onClick={() => setDetail(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620, maxHeight: '90vh', overflowY: 'auto' }}>
+            <button className="modal-close" onClick={() => setDetail(null)}>&times;</button>
+            <h3 className="gold-text">{detail.fullName}</h3>
+            <p className="modal-sub">Diagnostic Intake · {new Date(detail.createdAt).toLocaleString()}</p>
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#a3a3a3' }}>Status</label>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                {STATUSES.map((s) => (<button key={s} className={`btn-sm ${detail.status === s ? 'gold' : ''}`} onClick={() => setStatus(detail.id, s)}>{s}</button>))}
+              </div>
+            </div>
+            {[['Phone', detail.phone], ['Email', detail.email], ['Address', detail.address], ['Blood Group', detail.bloodGroup], ['Allergies', detail.allergies], ['Current Routine', detail.currentRoutine]].map(([k, v]) => (
+              <div className="review-row" key={k}><span className="k">{k}</span><span className="v">{v || '—'}</span></div>
+            ))}
+            <div style={{ marginTop: 18 }}>
+              <label className="file-label">Medical Reports</label>
+              <div className="thumb-grid">
+                {(detail.reportFileIds || []).length === 0 && <span style={{ color: '#a3a3a3', fontSize: 13 }}>None</span>}
+                {(detail.reportFileIds || []).map((id) => (<button key={id} className="btn-sm" onClick={() => openFile(id)}>View Report</button>))}
+              </div>
+              <label className="file-label">Face Photos</label>
+              <div className="thumb-grid">
+                {(detail.facePhotoFileIds || []).length === 0 && <span style={{ color: '#a3a3a3', fontSize: 13 }}>None</span>}
+                {(detail.facePhotoFileIds || []).map((id) => (
+                  <button key={id} className="thumb" onClick={() => openFile(id)} style={{ cursor: 'pointer', border: '1px solid var(--border-glass)', padding: 0 }}>
+                    <img src={`/api/admin/secure-file/${id}`} alt="face" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -369,11 +517,13 @@ export default function Dashboard() {
 
   const titles = {
     overview: ['Overview', 'Key metrics and visitor analytics at a glance'],
-    products: ['Products', 'Add, edit and remove products across all tiers'],
+    products: ['Products', 'Add, edit and remove products and their variants across all tiers'],
+    packages: ['Packages', 'Manage the bespoke formulation packages and their inclusions'],
     categories: ['Categories', 'Rename tiers and edit their intro copy'],
     content: ['Website Content', 'Edit the storefront copy without touching code'],
     users: ['Users', 'Registered members of DERMATICS'],
-    inquiries: ['Inquiries', 'Consultation requests submitted by visitors'],
+    inquiries: ['Inquiries', 'Product & package inquiries submitted by visitors'],
+    diagnostics: ['Consultations', 'Diagnostic intake submissions (sensitive — admin only)'],
   }
 
   return (
@@ -395,10 +545,12 @@ export default function Dashboard() {
         <p className="dash-subtitle">{titles[tab][1]}</p>
         {tab === 'overview' && <Overview />}
         {tab === 'products' && <Products />}
+        {tab === 'packages' && <Packages />}
         {tab === 'categories' && <Categories />}
         {tab === 'content' && <Content />}
         {tab === 'users' && <Users />}
         {tab === 'inquiries' && <Inquiries />}
+        {tab === 'diagnostics' && <Diagnostics />}
       </main>
     </div>
   )

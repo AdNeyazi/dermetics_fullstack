@@ -2,6 +2,18 @@ import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
 import { hashPassword, verifyPassword, signToken, getAuthUser, cookieOptions } from '@/lib/auth'
+import fs from 'fs/promises'
+import nodePath from 'path'
+
+// NOTE: Secure file storage fallback.
+// The verified playbook recommends a PRIVATE AWS S3 bucket with presigned URLs.
+// Since AWS credentials were not provided, sensitive files (medical reports / face
+// photos) are stored on the server's private disk (outside /public) and streamed
+// ONLY to authenticated admins (acts like a signed URL gate). Swap to S3 for
+// production. FLAGGED FOR DATA-PROTECTION REVIEW before going live with health data.
+const UPLOAD_DIR = nodePath.join(process.cwd(), 'uploads')
+const TMP_DIR = nodePath.join(UPLOAD_DIR, 'tmp')
+const EXT_BY_TYPE = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic' }
 
 let dbPromise
 let seedPromise
@@ -81,6 +93,34 @@ const CONTENT = {
   phone: '+91 98765 43210',
 }
 
+const PACKAGES = [
+  { id: uuidv4(), order: 1, name: 'Essential Formulation', price: 1200, description: 'The perfect entry into bespoke skincare \u2014 a single custom formula built around your primary skin concern.', recommended: false, features: ['1 Dermatologist Consultation', '1 Reformulation Iteration', 'Quarterly Delivery', 'Personalized Skin Diagnostic Report', 'Email Support'] },
+  { id: uuidv4(), order: 2, name: 'Advanced Formulation', price: 2800, description: 'A complete, evolving ritual \u2014 multiple formulas refined together as your skin transforms through the seasons.', recommended: true, features: ['3 Dermatologist Consultations', '3 Reformulation Iterations', 'Monthly Delivery', 'Advanced Diagnostic Report', 'Priority Concierge Support', 'Seasonal Formula Adjustments'] },
+  { id: uuidv4(), order: 3, name: 'Elite Formulation', price: 5500, description: 'The pinnacle of personalisation \u2014 unlimited refinement, a dedicated scientific team, and white-glove care.', recommended: false, features: ['Unlimited Consultations', 'Unlimited Reformulations', 'Bi-Weekly Delivery', 'Comprehensive Longevity Report', '24/7 Dedicated Concierge', 'Dedicated Scientific Board', 'Annual In-Person Skin Review'] },
+]
+
+// Demo variants applied to specific products (Premium & Ultra tiers)
+const VARIANT_DEMO = {
+  'Velvet Barrier Cream': [
+    { label: '50 ml', price: 195 },
+    { label: '100 ml', price: 320 },
+  ],
+  'Luminous Cellular Dew': [
+    { label: '30 ml', price: 140 },
+    { label: '50 ml', price: 210 },
+  ],
+  'Platinum Neuro-Infusion': [
+    { label: '15 ml', price: 450 },
+    { label: '30 ml', price: 820 },
+  ],
+}
+const SUNSCREEN = { tier: 'premium', tag: 'The Universal Essentials', name: 'Solar Veil Mineral Fluid', description: 'A weightless mineral sunscreen that shields, primes and perfects \u2014 available across protection levels.', imageUrl: 'https://images.unsplash.com/photo-1556228578-8c89e6adf883?crop=entropy&cs=srgb&fm=jpg&q=85', basePrice: 95, variants: [{ label: 'SPF 30', price: 95 }, { label: 'SPF 50', price: 115 }, { label: 'SPF 50+ PA++++', price: 140 }] }
+
+async function ensureUploadDirs() {
+  await fs.mkdir(TMP_DIR, { recursive: true })
+  await fs.mkdir(nodePath.join(UPLOAD_DIR, 'files'), { recursive: true })
+}
+
 async function seedIfEmpty(db) {
   if (await db.collection('products').countDocuments() === 0) {
     await db.collection('products').insertMany(PRODUCTS.map(p => ({ ...p })))
@@ -97,6 +137,22 @@ async function seedIfEmpty(db) {
   if (await db.collection('content').countDocuments() === 0) {
     await db.collection('content').insertOne({ ...CONTENT })
   }
+  if (await db.collection('packages').countDocuments() === 0) {
+    await db.collection('packages').insertMany(PACKAGES.map(p => ({ ...p })))
+  }
+  // Ensure demo variants exist on specific products (idempotent)
+  for (const [name, variants] of Object.entries(VARIANT_DEMO)) {
+    await db.collection('products').updateOne(
+      { name, variants: { $exists: false } },
+      { $set: { variants } }
+    )
+  }
+  // Ensure the SPF sunscreen demo product exists
+  const hasSunscreen = await db.collection('products').findOne({ name: SUNSCREEN.name })
+  if (!hasSunscreen) {
+    await db.collection('products').insertOne({ id: uuidv4(), tier: SUNSCREEN.tier, tag: SUNSCREEN.tag, name: SUNSCREEN.name, description: SUNSCREEN.description, price: SUNSCREEN.basePrice, imageUrl: SUNSCREEN.imageUrl, variants: SUNSCREEN.variants })
+  }
+  await ensureUploadDirs()
   // seed admin
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@dermatics.com').toLowerCase()
   const existing = await db.collection('users').findOne({ email: adminEmail })
@@ -240,6 +296,81 @@ async function handleRoute(request, { params }) {
       return handleCORS(NextResponse.json({ success: true }))
     }
 
+    // ----- PACKAGES (public GET) -----
+    if (route === '/packages' && method === 'GET') {
+      const pkgs = await db.collection('packages').find({}).sort({ order: 1 }).toArray()
+      return handleCORS(NextResponse.json(pkgs.map(clean)))
+    }
+
+    // ----- SECURE FILE UPLOAD (chunked, to bypass proxy body limits) -----
+    // POST /api/upload/chunk  { uploadId, index, total, data(base64), fileName, contentType }
+    if (route === '/upload/chunk' && method === 'POST') {
+      const b = await readBody(request)
+      if (!b.uploadId || b.index === undefined || !b.data) {
+        return handleCORS(NextResponse.json({ error: 'uploadId, index and data required' }, { status: 400 }))
+      }
+      if (!/^[a-zA-Z0-9\-]+$/.test(b.uploadId)) {
+        return handleCORS(NextResponse.json({ error: 'invalid uploadId' }, { status: 400 }))
+      }
+      await ensureUploadDirs()
+      const dir = nodePath.join(TMP_DIR, b.uploadId)
+      await fs.mkdir(dir, { recursive: true })
+      const buf = Buffer.from(b.data, 'base64')
+      await fs.writeFile(nodePath.join(dir, String(b.index).padStart(6, '0')), buf)
+      return handleCORS(NextResponse.json({ success: true, index: b.index }))
+    }
+
+    // POST /api/upload/complete  { uploadId, fileName, contentType }
+    if (route === '/upload/complete' && method === 'POST') {
+      const b = await readBody(request)
+      if (!b.uploadId || !/^[a-zA-Z0-9\-]+$/.test(b.uploadId)) {
+        return handleCORS(NextResponse.json({ error: 'invalid uploadId' }, { status: 400 }))
+      }
+      const ext = EXT_BY_TYPE[b.contentType] || 'bin'
+      const dir = nodePath.join(TMP_DIR, b.uploadId)
+      let chunks
+      try { chunks = (await fs.readdir(dir)).sort() } catch { return handleCORS(NextResponse.json({ error: 'no chunks found' }, { status: 400 })) }
+      const fileId = uuidv4()
+      const finalPath = nodePath.join(UPLOAD_DIR, 'files', `${fileId}.${ext}`)
+      const parts = []
+      for (const c of chunks) parts.push(await fs.readFile(nodePath.join(dir, c)))
+      const full = Buffer.concat(parts)
+      await fs.writeFile(finalPath, full)
+      await fs.rm(dir, { recursive: true, force: true })
+      const meta = { id: fileId, originalName: b.fileName || 'file', contentType: b.contentType || 'application/octet-stream', ext, size: full.length, path: finalPath, createdAt: new Date() }
+      await db.collection('secure_files').insertOne(meta)
+      return handleCORS(NextResponse.json({ fileId, size: full.length }))
+    }
+
+    // ----- DIAGNOSTIC CONSULTATION (intake form; sensitive) -----
+    // POST /api/diagnostic-consultation  (public/user submit)
+    if (route === '/diagnostic-consultation' && method === 'POST') {
+      const b = await readBody(request)
+      if (!b.fullName || !b.phone || !b.consent) {
+        return handleCORS(NextResponse.json({ error: 'fullName, phone and consent are required' }, { status: 400 }))
+      }
+      const authUser = await getAuthUser(request)
+      const submission = {
+        id: uuidv4(),
+        fullName: b.fullName,
+        email: b.email || '',
+        phone: b.phone,
+        address: b.address || '',
+        bloodGroup: b.bloodGroup || '',
+        allergies: b.allergies || '',
+        currentRoutine: b.currentRoutine || '',
+        reportFileIds: Array.isArray(b.reportFileIds) ? b.reportFileIds : [],
+        facePhotoFileIds: Array.isArray(b.facePhotoFileIds) ? b.facePhotoFileIds : [],
+        consent: true,
+        status: 'New',
+        userId: authUser ? authUser.id : null,
+        createdAt: new Date(),
+      }
+      await db.collection('diagnostic_consultations').insertOne(submission)
+      // Return only a confirmation id (do NOT echo sensitive data publicly)
+      return handleCORS(NextResponse.json({ success: true, id: submission.id }))
+    }
+
     // ================= ADMIN-PROTECTED =================
     const auth = await getAuthUser(request)
     const isAdmin = auth && auth.role === 'admin'
@@ -249,7 +380,7 @@ async function handleRoute(request, { params }) {
     if (route === '/admin/products' && method === 'POST') {
       if (!isAdmin) return requireAdmin()
       const b = await readBody(request)
-      const product = { id: uuidv4(), tier: b.tier || 'premium', tag: b.tag || '', name: b.name || '', description: b.description || '', price: Number(b.price) || 0, imageUrl: b.imageUrl || '' }
+      const product = { id: uuidv4(), tier: b.tier || 'premium', tag: b.tag || '', name: b.name || '', description: b.description || '', price: Number(b.price) || 0, imageUrl: b.imageUrl || '', variants: Array.isArray(b.variants) ? b.variants.map(v => ({ label: v.label || '', price: Number(v.price) || 0, imageUrl: v.imageUrl || '' })) : [] }
       await db.collection('products').insertOne(product)
       return handleCORS(NextResponse.json(clean(product)))
     }
@@ -258,6 +389,7 @@ async function handleRoute(request, { params }) {
       const id = path[2]
       const b = await readBody(request)
       const update = { tier: b.tier, tag: b.tag, name: b.name, description: b.description, price: Number(b.price), imageUrl: b.imageUrl }
+      if (Array.isArray(b.variants)) update.variants = b.variants.map(v => ({ label: v.label || '', price: Number(v.price) || 0, imageUrl: v.imageUrl || '' }))
       Object.keys(update).forEach(k => update[k] === undefined && delete update[k])
       await db.collection('products').updateOne({ id }, { $set: update })
       const doc = await db.collection('products').findOne({ id })
@@ -338,6 +470,60 @@ async function handleRoute(request, { params }) {
       if (!isAdmin) return requireAdmin()
       await db.collection('faqs').deleteOne({ id: path[2] })
       return handleCORS(NextResponse.json({ success: true }))
+    }
+
+    // Packages CRUD
+    if (route === '/admin/packages' && method === 'POST') {
+      if (!isAdmin) return requireAdmin()
+      const b = await readBody(request)
+      const pkg = { id: uuidv4(), order: Number(b.order) || 99, name: b.name || '', price: Number(b.price) || 0, description: b.description || '', recommended: !!b.recommended, features: Array.isArray(b.features) ? b.features : [] }
+      await db.collection('packages').insertOne(pkg)
+      return handleCORS(NextResponse.json(clean(pkg)))
+    }
+    if (route.startsWith('/admin/packages/') && method === 'PUT') {
+      if (!isAdmin) return requireAdmin()
+      const id = path[2]
+      const b = await readBody(request)
+      const update = { order: b.order !== undefined ? Number(b.order) : undefined, name: b.name, price: b.price !== undefined ? Number(b.price) : undefined, description: b.description, recommended: b.recommended, features: Array.isArray(b.features) ? b.features : undefined }
+      Object.keys(update).forEach(k => update[k] === undefined && delete update[k])
+      await db.collection('packages').updateOne({ id }, { $set: update })
+      const doc = await db.collection('packages').findOne({ id })
+      return handleCORS(NextResponse.json(clean(doc)))
+    }
+    if (route.startsWith('/admin/packages/') && method === 'DELETE') {
+      if (!isAdmin) return requireAdmin()
+      await db.collection('packages').deleteOne({ id: path[2] })
+      return handleCORS(NextResponse.json({ success: true }))
+    }
+
+    // Diagnostic consultations (ADMIN ONLY — sensitive medical data)
+    if (route === '/admin/diagnostic-consultations' && method === 'GET') {
+      if (!isAdmin) return requireAdmin()
+      const items = await db.collection('diagnostic_consultations').find({}).sort({ createdAt: -1 }).limit(500).toArray()
+      return handleCORS(NextResponse.json(items.map(clean)))
+    }
+    if (route.startsWith('/admin/diagnostic-consultations/') && method === 'PUT') {
+      if (!isAdmin) return requireAdmin()
+      const id = path[2]
+      const b = await readBody(request)
+      await db.collection('diagnostic_consultations').updateOne({ id }, { $set: { status: b.status } })
+      const doc = await db.collection('diagnostic_consultations').findOne({ id })
+      return handleCORS(NextResponse.json(clean(doc)))
+    }
+
+    // Secure file stream (ADMIN ONLY — acts as the gated "signed URL")
+    if (route.startsWith('/admin/secure-file/') && method === 'GET') {
+      if (!isAdmin) return requireAdmin()
+      const fileId = path[2]
+      const meta = await db.collection('secure_files').findOne({ id: fileId })
+      if (!meta) return handleCORS(NextResponse.json({ error: 'Not found' }, { status: 404 }))
+      let data
+      try { data = await fs.readFile(meta.path) } catch { return handleCORS(NextResponse.json({ error: 'File missing' }, { status: 404 })) }
+      const res = new NextResponse(data, { status: 200 })
+      res.headers.set('Content-Type', meta.contentType)
+      res.headers.set('Content-Disposition', `inline; filename="${meta.originalName}"`)
+      res.headers.set('Cache-Control', 'private, no-store')
+      return handleCORS(res)
     }
 
     // Users list + deactivate

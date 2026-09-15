@@ -1,555 +1,857 @@
 #!/usr/bin/env python3
 """
-DERMATICS Backend API Test Suite
-Tests all API endpoints for the luxury skincare platform
+DERMATICS Phase 3 Backend API Tests
+Tests: Product Variants, Packages, Secure File Upload, Diagnostic Consultation
 """
 
 import requests
 import json
+import base64
 import sys
 
-# Base URL from environment
+# Base URL from .env
 BASE_URL = "https://dermatics-luxury.preview.emergentagent.com/api"
 
-def print_test_header(test_name):
-    print(f"\n{'='*80}")
-    print(f"TEST: {test_name}")
-    print(f"{'='*80}")
+# Admin credentials
+ADMIN_EMAIL = "admin@dermatics.com"
+ADMIN_PASSWORD = "admin123"
 
-def print_success(message):
-    print(f"✅ PASS: {message}")
+# Test results tracking
+test_results = {
+    "passed": 0,
+    "failed": 0,
+    "tests": []
+}
 
-def print_failure(message):
-    print(f"❌ FAIL: {message}")
+def log_test(name, passed, message=""):
+    """Log test result"""
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"{status}: {name}")
+    if message:
+        print(f"   {message}")
+    
+    test_results["tests"].append({
+        "name": name,
+        "passed": passed,
+        "message": message
+    })
+    
+    if passed:
+        test_results["passed"] += 1
+    else:
+        test_results["failed"] += 1
 
-def test_get_all_products():
-    """Test GET /api/products - should return 6 products"""
-    print_test_header("GET /api/products (all products)")
+def print_summary():
+    """Print test summary"""
+    total = test_results["passed"] + test_results["failed"]
+    print("\n" + "="*80)
+    print(f"TEST SUMMARY: {test_results['passed']}/{total} PASSED")
+    print("="*80)
+    
+    if test_results["failed"] > 0:
+        print("\nFailed Tests:")
+        for test in test_results["tests"]:
+            if not test["passed"]:
+                print(f"  ❌ {test['name']}")
+                if test["message"]:
+                    print(f"     {test['message']}")
+
+def get_admin_session():
+    """Login as admin and return session with cookie"""
+    session = requests.Session()
     
     try:
-        response = requests.get(f"{BASE_URL}/products", timeout=10)
-        print(f"Status Code: {response.status_code}")
+        response = session.post(
+            f"{BASE_URL}/auth/login",
+            json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+            timeout=10
+        )
         
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)[:500]}...")
-        
-        # Check if it's a list
-        if not isinstance(data, list):
-            print_failure(f"Expected list, got {type(data)}")
-            return False
-        
-        # Check count
-        if len(data) != 6:
-            print_failure(f"Expected 6 products, got {len(data)}")
-            return False
-        
-        print_success(f"Returned {len(data)} products")
-        
-        # Check required fields
-        required_fields = ['id', 'tier', 'tag', 'name', 'description', 'price', 'imageUrl']
-        for product in data:
-            for field in required_fields:
-                if field not in product:
-                    print_failure(f"Product missing required field: {field}")
-                    return False
-            
-            # Check no MongoDB _id leak
-            if '_id' in product:
-                print_failure("MongoDB _id leaked into response!")
-                return False
-        
-        print_success("All products have required fields (id, tier, tag, name, description, price, imageUrl)")
-        print_success("No MongoDB _id found in response")
-        
-        return True
-        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("user", {}).get("role") == "admin":
+                print("✅ Admin login successful")
+                return session
+            else:
+                print(f"❌ Admin login failed: user role is {data.get('user', {}).get('role')}")
+                return None
+        else:
+            print(f"❌ Admin login failed: {response.status_code} - {response.text}")
+            return None
     except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
+        print(f"❌ Admin login error: {str(e)}")
+        return None
 
-def test_get_products_by_tier_premium():
-    """Test GET /api/products?tier=premium - should return 3 premium products"""
-    print_test_header("GET /api/products?tier=premium")
+def test_product_variants():
+    """Test Phase 3: Product Variants"""
+    print("\n" + "="*80)
+    print("TESTING: PRODUCT VARIANTS")
+    print("="*80)
     
+    # Test 1: GET /api/products?tier=premium - check for variants
     try:
         response = requests.get(f"{BASE_URL}/products?tier=premium", timeout=10)
-        print(f"Status Code: {response.status_code}")
         
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)[:500]}...")
-        
-        # Check count
-        if len(data) != 3:
-            print_failure(f"Expected 3 premium products, got {len(data)}")
-            return False
-        
-        print_success(f"Returned {len(data)} products")
-        
-        # Check all are premium tier
-        for product in data:
-            if product.get('tier') != 'premium':
-                print_failure(f"Expected tier 'premium', got '{product.get('tier')}'")
-                return False
+        if response.status_code == 200:
+            products = response.json()
             
-            if '_id' in product:
-                print_failure("MongoDB _id leaked into response!")
-                return False
-        
-        print_success("All products have tier='premium'")
-        print_success("No MongoDB _id found in response")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_get_products_by_tier_ultra():
-    """Test GET /api/products?tier=ultra - should return 3 ultra products"""
-    print_test_header("GET /api/products?tier=ultra")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/products?tier=ultra", timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)[:500]}...")
-        
-        # Check count
-        if len(data) != 3:
-            print_failure(f"Expected 3 ultra products, got {len(data)}")
-            return False
-        
-        print_success(f"Returned {len(data)} products")
-        
-        # Check all are ultra tier
-        for product in data:
-            if product.get('tier') != 'ultra':
-                print_failure(f"Expected tier 'ultra', got '{product.get('tier')}'")
-                return False
+            # Check if at least one product has variants
+            has_variants = False
+            variant_product = None
             
-            if '_id' in product:
-                print_failure("MongoDB _id leaked into response!")
-                return False
-        
-        print_success("All products have tier='ultra'")
-        print_success("No MongoDB _id found in response")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_get_products_by_tier_super():
-    """Test GET /api/products?tier=super - should return 0 products (no super tier)"""
-    print_test_header("GET /api/products?tier=super")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/products?tier=super", timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)}")
-        
-        # Check count is 0
-        if len(data) != 0:
-            print_failure(f"Expected 0 super products (tier doesn't exist), got {len(data)}")
-            return False
-        
-        print_success("Returned 0 products as expected (super tier doesn't exist)")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_get_team():
-    """Test GET /api/team - should return 4 team members sorted by order"""
-    print_test_header("GET /api/team")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/team", timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)[:500]}...")
-        
-        # Check count
-        if len(data) != 4:
-            print_failure(f"Expected 4 team members, got {len(data)}")
-            return False
-        
-        print_success(f"Returned {len(data)} team members")
-        
-        # Check required fields
-        required_fields = ['id', 'order', 'name', 'role', 'bio', 'imageUrl']
-        for member in data:
-            for field in required_fields:
-                if field not in member:
-                    print_failure(f"Team member missing required field: {field}")
-                    return False
-            
-            if '_id' in member:
-                print_failure("MongoDB _id leaked into response!")
-                return False
-        
-        print_success("All team members have required fields (id, order, name, role, bio, imageUrl)")
-        
-        # Check sorting by order
-        orders = [member['order'] for member in data]
-        if orders != sorted(orders):
-            print_failure(f"Team members not sorted by order. Got: {orders}")
-            return False
-        
-        print_success(f"Team members correctly sorted by order: {orders}")
-        print_success("No MongoDB _id found in response")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_get_faqs():
-    """Test GET /api/faqs - should return 3 FAQs sorted by order with Hinglish answers"""
-    print_test_header("GET /api/faqs")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/faqs", timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2, ensure_ascii=False)[:800]}...")
-        
-        # Check count
-        if len(data) != 3:
-            print_failure(f"Expected 3 FAQs, got {len(data)}")
-            return False
-        
-        print_success(f"Returned {len(data)} FAQs")
-        
-        # Check required fields
-        required_fields = ['id', 'order', 'question', 'answer']
-        for faq in data:
-            for field in required_fields:
-                if field not in faq:
-                    print_failure(f"FAQ missing required field: {field}")
-                    return False
-            
-            if '_id' in faq:
-                print_failure("MongoDB _id leaked into response!")
-                return False
-            
-            # Check answer is non-empty string (Hinglish)
-            if not isinstance(faq['answer'], str) or len(faq['answer']) == 0:
-                print_failure(f"FAQ answer is not a non-empty string")
-                return False
-        
-        print_success("All FAQs have required fields (id, order, question, answer)")
-        print_success("All answers are non-empty strings (Hinglish content)")
-        
-        # Check sorting by order
-        orders = [faq['order'] for faq in data]
-        if orders != sorted(orders):
-            print_failure(f"FAQs not sorted by order. Got: {orders}")
-            return False
-        
-        print_success(f"FAQs correctly sorted by order: {orders}")
-        print_success("No MongoDB _id found in response")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_post_consultation_valid():
-    """Test POST /api/consultation with valid data - should return success with uuid"""
-    print_test_header("POST /api/consultation (valid data)")
-    
-    try:
-        payload = {
-            "name": "Priya Sharma",
-            "phone": "+91-9876543210",
-            "email": "priya.sharma@example.com",
-            "message": "I'm interested in a custom formulation for my combination skin with hyperpigmentation concerns.",
-            "tier": "premium"
-        }
-        
-        print(f"Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(f"{BASE_URL}/consultation", json=payload, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            print(f"Response: {response.text}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)}")
-        
-        # Check success field
-        if not data.get('success'):
-            print_failure("Expected success=true in response")
-            return False
-        
-        print_success("Response has success=true")
-        
-        # Check submission object
-        if 'submission' not in data:
-            print_failure("Missing 'submission' field in response")
-            return False
-        
-        submission = data['submission']
-        
-        # Check for uuid id
-        if 'id' not in submission:
-            print_failure("Missing 'id' field in submission")
-            return False
-        
-        # Check id is a valid uuid format (contains hyphens)
-        if '-' not in submission['id']:
-            print_failure(f"ID doesn't look like a UUID: {submission['id']}")
-            return False
-        
-        print_success(f"Submission has valid UUID id: {submission['id']}")
-        
-        # Check no MongoDB _id leak
-        if '_id' in submission:
-            print_failure("MongoDB _id leaked into response!")
-            return False
-        
-        print_success("No MongoDB _id found in response")
-        
-        # Check submitted data is present
-        if submission.get('name') != payload['name']:
-            print_failure(f"Name mismatch: expected '{payload['name']}', got '{submission.get('name')}'")
-            return False
-        
-        if submission.get('phone') != payload['phone']:
-            print_failure(f"Phone mismatch: expected '{payload['phone']}', got '{submission.get('phone')}'")
-            return False
-        
-        print_success("Submission data matches payload")
-        
-        # Store the id for later verification
-        global last_submission_id
-        last_submission_id = submission['id']
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_post_consultation_missing_name():
-    """Test POST /api/consultation missing name - should return 400 error"""
-    print_test_header("POST /api/consultation (missing name)")
-    
-    try:
-        payload = {
-            "phone": "+91-9876543210",
-            "email": "test@example.com",
-            "message": "Test message",
-            "tier": "premium"
-        }
-        
-        print(f"Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(f"{BASE_URL}/consultation", json=payload, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 400:
-            print_failure(f"Expected status 400, got {response.status_code}")
-            print(f"Response: {response.text}")
-            return False
-        
-        print_success("Correctly returned 400 status code")
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)}")
-        
-        # Check for error field
-        if 'error' not in data:
-            print_failure("Missing 'error' field in response")
-            return False
-        
-        print_success(f"Response contains error message: {data['error']}")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_post_consultation_missing_phone():
-    """Test POST /api/consultation missing phone - should return 400 error"""
-    print_test_header("POST /api/consultation (missing phone)")
-    
-    try:
-        payload = {
-            "name": "Test User",
-            "email": "test@example.com",
-            "message": "Test message",
-            "tier": "premium"
-        }
-        
-        print(f"Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(f"{BASE_URL}/consultation", json=payload, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 400:
-            print_failure(f"Expected status 400, got {response.status_code}")
-            print(f"Response: {response.text}")
-            return False
-        
-        print_success("Correctly returned 400 status code")
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)}")
-        
-        # Check for error field
-        if 'error' not in data:
-            print_failure("Missing 'error' field in response")
-            return False
-        
-        print_success(f"Response contains error message: {data['error']}")
-        
-        return True
-        
-    except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
-
-def test_get_consultations():
-    """Test GET /api/consultation - should list stored submissions"""
-    print_test_header("GET /api/consultation (list submissions)")
-    
-    try:
-        response = requests.get(f"{BASE_URL}/consultation", timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        if response.status_code != 200:
-            print_failure(f"Expected status 200, got {response.status_code}")
-            return False
-        
-        data = response.json()
-        print(f"Response: {json.dumps(data, indent=2)[:800]}...")
-        
-        # Check if it's a list
-        if not isinstance(data, list):
-            print_failure(f"Expected list, got {type(data)}")
-            return False
-        
-        print_success(f"Returned list with {len(data)} submission(s)")
-        
-        # Check if our submission is in the list
-        if hasattr(test_get_consultations, '__globals__') and 'last_submission_id' in globals():
-            found = False
-            for submission in data:
-                if submission.get('id') == last_submission_id:
-                    found = True
-                    print_success(f"Found our test submission with id: {last_submission_id}")
+            for product in products:
+                if "variants" in product and len(product["variants"]) > 0:
+                    has_variants = True
+                    variant_product = product
+                    
+                    # Verify variant structure
+                    for variant in product["variants"]:
+                        if "label" not in variant or "price" not in variant:
+                            log_test("GET /api/products?tier=premium - variant structure", False, 
+                                   f"Variant missing label or price: {variant}")
+                            break
+                        if not isinstance(variant["price"], (int, float)):
+                            log_test("GET /api/products?tier=premium - variant price type", False,
+                                   f"Variant price is not numeric: {variant['price']}")
+                            break
                     break
             
-            if not found:
-                print_failure(f"Could not find our test submission with id: {last_submission_id}")
-                return False
-        
-        # Check no MongoDB _id leak
-        for submission in data:
-            if '_id' in submission:
-                print_failure("MongoDB _id leaked into response!")
-                return False
-        
-        print_success("No MongoDB _id found in any submission")
-        
-        return True
-        
+            if has_variants:
+                log_test("GET /api/products?tier=premium - has variants", True,
+                       f"Found product '{variant_product['name']}' with {len(variant_product['variants'])} variants")
+                
+                # Check for specific demo products
+                sunscreen = next((p for p in products if p["name"] == "Solar Veil Mineral Fluid"), None)
+                if sunscreen and "variants" in sunscreen:
+                    spf_variants = [v["label"] for v in sunscreen["variants"]]
+                    log_test("Solar Veil Mineral Fluid - SPF variants", True,
+                           f"SPF variants: {', '.join(spf_variants)}")
+                
+                velvet = next((p for p in products if p["name"] == "Velvet Barrier Cream"), None)
+                if velvet and "variants" in velvet:
+                    ml_variants = [v["label"] for v in velvet["variants"]]
+                    log_test("Velvet Barrier Cream - ml variants", True,
+                           f"ML variants: {', '.join(ml_variants)}")
+            else:
+                log_test("GET /api/products?tier=premium - has variants", False,
+                       "No products with variants found")
+        else:
+            log_test("GET /api/products?tier=premium", False,
+                   f"Status {response.status_code}: {response.text}")
     except Exception as e:
-        print_failure(f"Exception occurred: {str(e)}")
-        return False
+        log_test("GET /api/products?tier=premium", False, str(e))
+    
+    # Test 2: POST /api/admin/products with variants (without admin cookie - should fail)
+    try:
+        response = requests.post(
+            f"{BASE_URL}/admin/products",
+            json={
+                "tier": "premium",
+                "name": "Variant Test Product",
+                "tag": "Test",
+                "description": "Test description",
+                "price": 100,
+                "imageUrl": "http://example.com/test.jpg",
+                "variants": [
+                    {"label": "Small", "price": 100},
+                    {"label": "Large", "price": 180}
+                ]
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 401:
+            log_test("POST /api/admin/products without admin cookie", True, "Correctly returned 401")
+        else:
+            log_test("POST /api/admin/products without admin cookie", False,
+                   f"Expected 401, got {response.status_code}")
+    except Exception as e:
+        log_test("POST /api/admin/products without admin cookie", False, str(e))
+    
+    # Test 3: POST /api/admin/products with variants (with admin cookie)
+    admin_session = get_admin_session()
+    if not admin_session:
+        log_test("POST /api/admin/products with admin cookie", False, "Failed to get admin session")
+        return
+    
+    created_product_id = None
+    
+    try:
+        response = admin_session.post(
+            f"{BASE_URL}/admin/products",
+            json={
+                "tier": "premium",
+                "name": "Variant Test Product",
+                "tag": "Test",
+                "description": "Test description",
+                "price": 100,
+                "imageUrl": "http://example.com/test.jpg",
+                "variants": [
+                    {"label": "Small", "price": 100},
+                    {"label": "Large", "price": 180}
+                ]
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            product = response.json()
+            
+            # Check for _id leak
+            if "_id" in product:
+                log_test("POST /api/admin/products - no _id leak", False, "_id found in response")
+            else:
+                log_test("POST /api/admin/products - no _id leak", True)
+            
+            # Verify variants
+            if "variants" in product and len(product["variants"]) == 2:
+                variant_labels = [v["label"] for v in product["variants"]]
+                variant_prices = [v["price"] for v in product["variants"]]
+                
+                if "Small" in variant_labels and "Large" in variant_labels:
+                    if 100 in variant_prices and 180 in variant_prices:
+                        log_test("POST /api/admin/products with variants", True,
+                               f"Created product with 2 variants: {variant_labels}")
+                        created_product_id = product.get("id")
+                    else:
+                        log_test("POST /api/admin/products with variants", False,
+                               f"Variant prices incorrect: {variant_prices}")
+                else:
+                    log_test("POST /api/admin/products with variants", False,
+                           f"Variant labels incorrect: {variant_labels}")
+            else:
+                log_test("POST /api/admin/products with variants", False,
+                       f"Expected 2 variants, got {len(product.get('variants', []))}")
+        else:
+            log_test("POST /api/admin/products with variants", False,
+                   f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST /api/admin/products with variants", False, str(e))
+    
+    # Test 4: PUT /api/admin/products/:id - update variants
+    if created_product_id:
+        try:
+            response = admin_session.put(
+                f"{BASE_URL}/admin/products/{created_product_id}",
+                json={
+                    "variants": [
+                        {"label": "Only", "price": 150}
+                    ]
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                product = response.json()
+                
+                if "variants" in product and len(product["variants"]) == 1:
+                    if product["variants"][0]["label"] == "Only" and product["variants"][0]["price"] == 150:
+                        log_test("PUT /api/admin/products/:id - update variants", True,
+                               "Variants replaced with 1 item")
+                    else:
+                        log_test("PUT /api/admin/products/:id - update variants", False,
+                               f"Variant data incorrect: {product['variants'][0]}")
+                else:
+                    log_test("PUT /api/admin/products/:id - update variants", False,
+                           f"Expected 1 variant, got {len(product.get('variants', []))}")
+            else:
+                log_test("PUT /api/admin/products/:id - update variants", False,
+                       f"Status {response.status_code}: {response.text}")
+        except Exception as e:
+            log_test("PUT /api/admin/products/:id - update variants", False, str(e))
+        
+        # Test 5: DELETE /api/admin/products/:id
+        try:
+            response = admin_session.delete(
+                f"{BASE_URL}/admin/products/{created_product_id}",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                log_test("DELETE /api/admin/products/:id", True, "Product deleted successfully")
+            else:
+                log_test("DELETE /api/admin/products/:id", False,
+                       f"Status {response.status_code}: {response.text}")
+        except Exception as e:
+            log_test("DELETE /api/admin/products/:id", False, str(e))
+
+def test_packages():
+    """Test Phase 3: Packages"""
+    print("\n" + "="*80)
+    print("TESTING: PACKAGES")
+    print("="*80)
+    
+    # Test 1: GET /api/packages (public)
+    try:
+        response = requests.get(f"{BASE_URL}/packages", timeout=10)
+        
+        if response.status_code == 200:
+            packages = response.json()
+            
+            if len(packages) == 3:
+                log_test("GET /api/packages - count", True, "Returns 3 packages")
+                
+                # Check structure
+                required_fields = ["id", "order", "name", "price", "description", "recommended", "features"]
+                all_valid = True
+                
+                for pkg in packages:
+                    for field in required_fields:
+                        if field not in pkg:
+                            log_test("GET /api/packages - structure", False, f"Missing field: {field}")
+                            all_valid = False
+                            break
+                    
+                    # Check _id leak
+                    if "_id" in pkg:
+                        log_test("GET /api/packages - no _id leak", False, "_id found in response")
+                        all_valid = False
+                
+                if all_valid:
+                    log_test("GET /api/packages - structure", True, "All required fields present")
+                    log_test("GET /api/packages - no _id leak", True)
+                
+                # Check sorting by order
+                orders = [pkg["order"] for pkg in packages]
+                if orders == sorted(orders):
+                    log_test("GET /api/packages - sorted by order", True, f"Orders: {orders}")
+                else:
+                    log_test("GET /api/packages - sorted by order", False, f"Not sorted: {orders}")
+                
+                # Check for recommended package
+                recommended = [pkg for pkg in packages if pkg.get("recommended")]
+                if len(recommended) == 1:
+                    log_test("GET /api/packages - one recommended", True,
+                           f"'{recommended[0]['name']}' is recommended")
+                else:
+                    log_test("GET /api/packages - one recommended", False,
+                           f"Found {len(recommended)} recommended packages")
+            else:
+                log_test("GET /api/packages - count", False, f"Expected 3, got {len(packages)}")
+        else:
+            log_test("GET /api/packages", False, f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("GET /api/packages", False, str(e))
+    
+    # Test 2: POST /api/admin/packages without admin cookie
+    try:
+        response = requests.post(
+            f"{BASE_URL}/admin/packages",
+            json={
+                "name": "Test Package",
+                "price": 999,
+                "description": "Test",
+                "recommended": False,
+                "features": ["A", "B"],
+                "order": 9
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 401:
+            log_test("POST /api/admin/packages without admin cookie", True, "Correctly returned 401")
+        else:
+            log_test("POST /api/admin/packages without admin cookie", False,
+                   f"Expected 401, got {response.status_code}")
+    except Exception as e:
+        log_test("POST /api/admin/packages without admin cookie", False, str(e))
+    
+    # Test 3: POST /api/admin/packages with admin cookie
+    admin_session = get_admin_session()
+    if not admin_session:
+        log_test("POST /api/admin/packages with admin cookie", False, "Failed to get admin session")
+        return
+    
+    created_package_id = None
+    
+    try:
+        response = admin_session.post(
+            f"{BASE_URL}/admin/packages",
+            json={
+                "name": "Pkg Test",
+                "price": 999,
+                "description": "d",
+                "recommended": False,
+                "features": ["A", "B"],
+                "order": 9
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            package = response.json()
+            
+            # Check for _id leak
+            if "_id" in package:
+                log_test("POST /api/admin/packages - no _id leak", False, "_id found in response")
+            else:
+                log_test("POST /api/admin/packages - no _id leak", True)
+            
+            # Verify data
+            if package.get("name") == "Pkg Test" and package.get("price") == 999:
+                if isinstance(package.get("features"), list) and len(package["features"]) == 2:
+                    log_test("POST /api/admin/packages", True, "Package created with correct data")
+                    created_package_id = package.get("id")
+                else:
+                    log_test("POST /api/admin/packages", False, "Features array incorrect")
+            else:
+                log_test("POST /api/admin/packages", False, "Package data incorrect")
+        else:
+            log_test("POST /api/admin/packages", False,
+                   f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST /api/admin/packages", False, str(e))
+    
+    # Test 4: PUT /api/admin/packages/:id
+    if created_package_id:
+        try:
+            response = admin_session.put(
+                f"{BASE_URL}/admin/packages/{created_package_id}",
+                json={
+                    "price": 1099,
+                    "recommended": True
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                package = response.json()
+                
+                if package.get("price") == 1099 and package.get("recommended") == True:
+                    log_test("PUT /api/admin/packages/:id", True, "Package updated successfully")
+                else:
+                    log_test("PUT /api/admin/packages/:id", False,
+                           f"Update failed: price={package.get('price')}, recommended={package.get('recommended')}")
+            else:
+                log_test("PUT /api/admin/packages/:id", False,
+                       f"Status {response.status_code}: {response.text}")
+        except Exception as e:
+            log_test("PUT /api/admin/packages/:id", False, str(e))
+        
+        # Test 5: DELETE /api/admin/packages/:id
+        try:
+            response = admin_session.delete(
+                f"{BASE_URL}/admin/packages/{created_package_id}",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                log_test("DELETE /api/admin/packages/:id", True, "Package deleted successfully")
+            else:
+                log_test("DELETE /api/admin/packages/:id", False,
+                       f"Status {response.status_code}: {response.text}")
+        except Exception as e:
+            log_test("DELETE /api/admin/packages/:id", False, str(e))
+    
+    # Test 6: PUT /api/admin/packages/:id without admin cookie
+    if created_package_id:
+        try:
+            response = requests.put(
+                f"{BASE_URL}/admin/packages/{created_package_id}",
+                json={"price": 2000},
+                timeout=10
+            )
+            
+            if response.status_code == 401:
+                log_test("PUT /api/admin/packages/:id without admin cookie", True, "Correctly returned 401")
+            else:
+                log_test("PUT /api/admin/packages/:id without admin cookie", False,
+                       f"Expected 401, got {response.status_code}")
+        except Exception as e:
+            log_test("PUT /api/admin/packages/:id without admin cookie", False, str(e))
+
+def test_secure_file_upload():
+    """Test Phase 3: Secure File Upload (chunked)"""
+    print("\n" + "="*80)
+    print("TESTING: SECURE FILE UPLOAD")
+    print("="*80)
+    
+    # Test 1: POST /api/upload/chunk with valid data
+    upload_id = "phase3test"
+    test_data = "hello"
+    test_data_base64 = base64.b64encode(test_data.encode()).decode()  # 'aGVsbG8='
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/upload/chunk",
+            json={
+                "uploadId": upload_id,
+                "index": 0,
+                "total": 1,
+                "data": test_data_base64
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success") == True:
+                log_test("POST /api/upload/chunk", True, "Chunk uploaded successfully")
+            else:
+                log_test("POST /api/upload/chunk", False, f"Response: {result}")
+        else:
+            log_test("POST /api/upload/chunk", False,
+                   f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST /api/upload/chunk", False, str(e))
+    
+    # Test 2: POST /api/upload/complete
+    file_id = None
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/upload/complete",
+            json={
+                "uploadId": upload_id,
+                "fileName": "r.pdf",
+                "contentType": "application/pdf"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            if "fileId" in result and result.get("size") == 5:
+                log_test("POST /api/upload/complete", True,
+                       f"File completed: fileId={result['fileId']}, size=5")
+                file_id = result["fileId"]
+            else:
+                log_test("POST /api/upload/complete", False,
+                       f"Expected size=5, got {result.get('size')}")
+        else:
+            log_test("POST /api/upload/complete", False,
+                   f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST /api/upload/complete", False, str(e))
+    
+    # Test 3: GET /api/admin/secure-file/:id without admin cookie
+    if file_id:
+        try:
+            response = requests.get(
+                f"{BASE_URL}/admin/secure-file/{file_id}",
+                timeout=10
+            )
+            
+            if response.status_code == 401:
+                log_test("GET /api/admin/secure-file/:id without admin cookie", True,
+                       "Correctly returned 401")
+            else:
+                log_test("GET /api/admin/secure-file/:id without admin cookie", False,
+                       f"Expected 401, got {response.status_code}")
+        except Exception as e:
+            log_test("GET /api/admin/secure-file/:id without admin cookie", False, str(e))
+        
+        # Test 4: GET /api/admin/secure-file/:id with admin cookie
+        admin_session = get_admin_session()
+        if admin_session:
+            try:
+                response = admin_session.get(
+                    f"{BASE_URL}/admin/secure-file/{file_id}",
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    content_type = response.headers.get("Content-Type")
+                    content = response.content.decode()
+                    
+                    if content_type == "application/pdf" and content == test_data:
+                        log_test("GET /api/admin/secure-file/:id with admin cookie", True,
+                               f"File streamed correctly: Content-Type={content_type}, body='{content}'")
+                    else:
+                        log_test("GET /api/admin/secure-file/:id with admin cookie", False,
+                               f"Content-Type={content_type}, body='{content}' (expected 'hello')")
+                else:
+                    log_test("GET /api/admin/secure-file/:id with admin cookie", False,
+                           f"Status {response.status_code}: {response.text}")
+            except Exception as e:
+                log_test("GET /api/admin/secure-file/:id with admin cookie", False, str(e))
+    
+    # Test 5: POST /api/upload/chunk with invalid uploadId
+    try:
+        response = requests.post(
+            f"{BASE_URL}/upload/chunk",
+            json={
+                "uploadId": "../malicious",
+                "index": 0,
+                "total": 1,
+                "data": test_data_base64
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 400:
+            log_test("POST /api/upload/chunk with invalid uploadId", True,
+                   "Correctly rejected '../' in uploadId")
+        else:
+            log_test("POST /api/upload/chunk with invalid uploadId", False,
+                   f"Expected 400, got {response.status_code}")
+    except Exception as e:
+        log_test("POST /api/upload/chunk with invalid uploadId", False, str(e))
+
+def test_diagnostic_consultation():
+    """Test Phase 3: Diagnostic Consultation"""
+    print("\n" + "="*80)
+    print("TESTING: DIAGNOSTIC CONSULTATION")
+    print("="*80)
+    
+    # First, upload a test file to use as reportFileId
+    upload_id = "diagtest"
+    test_data_base64 = base64.b64encode(b"test report").decode()
+    file_id = None
+    
+    try:
+        # Upload chunk
+        requests.post(
+            f"{BASE_URL}/upload/chunk",
+            json={"uploadId": upload_id, "index": 0, "total": 1, "data": test_data_base64},
+            timeout=10
+        )
+        
+        # Complete upload
+        response = requests.post(
+            f"{BASE_URL}/upload/complete",
+            json={"uploadId": upload_id, "fileName": "report.pdf", "contentType": "application/pdf"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            file_id = response.json().get("fileId")
+    except:
+        pass
+    
+    # Test 1: POST /api/diagnostic-consultation with valid data
+    consultation_id = None
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/diagnostic-consultation",
+            json={
+                "fullName": "Jane Doe",
+                "phone": "+91 90000",
+                "email": "j@d.com",
+                "address": "A",
+                "bloodGroup": "O+",
+                "allergies": "none",
+                "currentRoutine": "x",
+                "reportFileIds": [file_id] if file_id else [],
+                "facePhotoFileIds": [],
+                "consent": True
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            
+            # Check that sensitive fields are NOT echoed
+            sensitive_fields = ["fullName", "phone", "email", "address", "bloodGroup", "allergies", "currentRoutine"]
+            has_sensitive = any(field in result for field in sensitive_fields)
+            
+            if has_sensitive:
+                log_test("POST /api/diagnostic-consultation - no sensitive echo", False,
+                       f"Sensitive fields found in response: {[f for f in sensitive_fields if f in result]}")
+            else:
+                log_test("POST /api/diagnostic-consultation - no sensitive echo", True,
+                       "Response does not echo sensitive fields")
+            
+            if result.get("success") == True and "id" in result:
+                log_test("POST /api/diagnostic-consultation", True,
+                       f"Consultation created: id={result['id']}")
+                consultation_id = result["id"]
+            else:
+                log_test("POST /api/diagnostic-consultation", False,
+                       f"Expected {{success:true, id}}, got {result}")
+        else:
+            log_test("POST /api/diagnostic-consultation", False,
+                   f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST /api/diagnostic-consultation", False, str(e))
+    
+    # Test 2: POST /api/diagnostic-consultation missing consent
+    try:
+        response = requests.post(
+            f"{BASE_URL}/diagnostic-consultation",
+            json={
+                "fullName": "Test User",
+                "phone": "+91 12345",
+                "consent": False  # or absent
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 400:
+            log_test("POST /api/diagnostic-consultation missing consent", True,
+                   "Correctly returned 400")
+        else:
+            log_test("POST /api/diagnostic-consultation missing consent", False,
+                   f"Expected 400, got {response.status_code}")
+    except Exception as e:
+        log_test("POST /api/diagnostic-consultation missing consent", False, str(e))
+    
+    # Test 3: POST /api/diagnostic-consultation missing fullName
+    try:
+        response = requests.post(
+            f"{BASE_URL}/diagnostic-consultation",
+            json={
+                "phone": "+91 12345",
+                "consent": True
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 400:
+            log_test("POST /api/diagnostic-consultation missing fullName", True,
+                   "Correctly returned 400")
+        else:
+            log_test("POST /api/diagnostic-consultation missing fullName", False,
+                   f"Expected 400, got {response.status_code}")
+    except Exception as e:
+        log_test("POST /api/diagnostic-consultation missing fullName", False, str(e))
+    
+    # Test 4: POST /api/diagnostic-consultation missing phone
+    try:
+        response = requests.post(
+            f"{BASE_URL}/diagnostic-consultation",
+            json={
+                "fullName": "Test User",
+                "consent": True
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 400:
+            log_test("POST /api/diagnostic-consultation missing phone", True,
+                   "Correctly returned 400")
+        else:
+            log_test("POST /api/diagnostic-consultation missing phone", False,
+                   f"Expected 400, got {response.status_code}")
+    except Exception as e:
+        log_test("POST /api/diagnostic-consultation missing phone", False, str(e))
+    
+    # Test 5: GET /api/admin/diagnostic-consultations without admin cookie
+    try:
+        response = requests.get(
+            f"{BASE_URL}/admin/diagnostic-consultations",
+            timeout=10
+        )
+        
+        if response.status_code == 401:
+            log_test("GET /api/admin/diagnostic-consultations without admin cookie", True,
+                   "Correctly returned 401")
+        else:
+            log_test("GET /api/admin/diagnostic-consultations without admin cookie", False,
+                   f"Expected 401, got {response.status_code}")
+    except Exception as e:
+        log_test("GET /api/admin/diagnostic-consultations without admin cookie", False, str(e))
+    
+    # Test 6: GET /api/admin/diagnostic-consultations with admin cookie
+    admin_session = get_admin_session()
+    if admin_session:
+        try:
+            response = admin_session.get(
+                f"{BASE_URL}/admin/diagnostic-consultations",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                consultations = response.json()
+                
+                # Find Jane Doe
+                jane = next((c for c in consultations if c.get("fullName") == "Jane Doe"), None)
+                
+                if jane:
+                    # Check that all sensitive fields are present
+                    required_fields = ["fullName", "phone", "email", "address", "bloodGroup", 
+                                     "allergies", "currentRoutine", "reportFileIds"]
+                    missing = [f for f in required_fields if f not in jane]
+                    
+                    if not missing:
+                        log_test("GET /api/admin/diagnostic-consultations with admin cookie", True,
+                               f"Found Jane Doe with all sensitive fields")
+                        
+                        # Check _id leak
+                        if "_id" in jane:
+                            log_test("GET /api/admin/diagnostic-consultations - no _id leak", False,
+                                   "_id found in response")
+                        else:
+                            log_test("GET /api/admin/diagnostic-consultations - no _id leak", True)
+                    else:
+                        log_test("GET /api/admin/diagnostic-consultations with admin cookie", False,
+                               f"Missing fields: {missing}")
+                else:
+                    log_test("GET /api/admin/diagnostic-consultations with admin cookie", False,
+                           "Jane Doe not found in consultations")
+            else:
+                log_test("GET /api/admin/diagnostic-consultations with admin cookie", False,
+                       f"Status {response.status_code}: {response.text}")
+        except Exception as e:
+            log_test("GET /api/admin/diagnostic-consultations with admin cookie", False, str(e))
+    
+    # Test 7: PUT /api/admin/diagnostic-consultations/:id without admin cookie
+    if consultation_id:
+        try:
+            response = requests.put(
+                f"{BASE_URL}/admin/diagnostic-consultations/{consultation_id}",
+                json={"status": "In Review"},
+                timeout=10
+            )
+            
+            if response.status_code == 401:
+                log_test("PUT /api/admin/diagnostic-consultations/:id without admin cookie", True,
+                       "Correctly returned 401")
+            else:
+                log_test("PUT /api/admin/diagnostic-consultations/:id without admin cookie", False,
+                       f"Expected 401, got {response.status_code}")
+        except Exception as e:
+            log_test("PUT /api/admin/diagnostic-consultations/:id without admin cookie", False, str(e))
+        
+        # Test 8: PUT /api/admin/diagnostic-consultations/:id with admin cookie
+        if admin_session:
+            try:
+                response = admin_session.put(
+                    f"{BASE_URL}/admin/diagnostic-consultations/{consultation_id}",
+                    json={"status": "In Review"},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    if result.get("status") == "In Review":
+                        log_test("PUT /api/admin/diagnostic-consultations/:id with admin cookie", True,
+                               "Status updated successfully")
+                    else:
+                        log_test("PUT /api/admin/diagnostic-consultations/:id with admin cookie", False,
+                               f"Status not updated: {result.get('status')}")
+                else:
+                    log_test("PUT /api/admin/diagnostic-consultations/:id with admin cookie", False,
+                           f"Status {response.status_code}: {response.text}")
+            except Exception as e:
+                log_test("PUT /api/admin/diagnostic-consultations/:id with admin cookie", False, str(e))
 
 def main():
-    """Run all tests"""
+    """Run all Phase 3 tests"""
     print("\n" + "="*80)
-    print("DERMATICS BACKEND API TEST SUITE")
+    print("DERMATICS PHASE 3 BACKEND API TESTS")
     print("="*80)
     print(f"Base URL: {BASE_URL}")
-    print("="*80)
+    print(f"Admin: {ADMIN_EMAIL}")
     
-    tests = [
-        ("GET /api/products (all)", test_get_all_products),
-        ("GET /api/products?tier=premium", test_get_products_by_tier_premium),
-        ("GET /api/products?tier=ultra", test_get_products_by_tier_ultra),
-        ("GET /api/products?tier=super", test_get_products_by_tier_super),
-        ("GET /api/team", test_get_team),
-        ("GET /api/faqs", test_get_faqs),
-        ("POST /api/consultation (valid)", test_post_consultation_valid),
-        ("POST /api/consultation (missing name)", test_post_consultation_missing_name),
-        ("POST /api/consultation (missing phone)", test_post_consultation_missing_phone),
-        ("GET /api/consultation", test_get_consultations),
-    ]
+    # Run all test groups
+    test_product_variants()
+    test_packages()
+    test_secure_file_upload()
+    test_diagnostic_consultation()
     
-    results = []
-    for test_name, test_func in tests:
-        try:
-            result = test_func()
-            results.append((test_name, result))
-        except Exception as e:
-            print_failure(f"Test crashed: {str(e)}")
-            results.append((test_name, False))
+    # Print summary
+    print_summary()
     
-    # Summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
-    print("="*80)
-    
-    passed = sum(1 for _, result in results if result)
-    total = len(results)
-    
-    for test_name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"{status}: {test_name}")
-    
-    print("="*80)
-    print(f"TOTAL: {passed}/{total} tests passed")
-    print("="*80)
-    
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        return 0
+    # Exit with appropriate code
+    if test_results["failed"] > 0:
+        sys.exit(1)
     else:
-        print(f"\n⚠️  {total - passed} test(s) failed")
-        return 1
+        sys.exit(0)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
