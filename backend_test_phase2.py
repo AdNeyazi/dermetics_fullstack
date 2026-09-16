@@ -4,14 +4,14 @@ DERMATICS Backend API Test Suite - Phase 2
 Tests Auth, Admin CRUD, Analytics, and Public Content endpoints
 """
 
+import os
 import requests
 import json
 import sys
 import random
 import string
 
-# Base URL from environment
-BASE_URL = "https://dermatics-luxury.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:3000/api")
 
 # Admin credentials
 ADMIN_EMAIL = "admin@dermatics.com"
