@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { apiFetch } from '@/lib/api'
 
 const DEFAULT_TABS = [
   { key: 'premium', label: 'Premium' },
@@ -37,26 +38,20 @@ function getSid() {
 }
 function track(event_type, metadata = {}) {
   try {
-    fetch('/api/analytics/event', {
+    apiFetch('/api/analytics/event', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ event_type, page: '/', metadata, session_id: getSid(), referrer: typeof document !== 'undefined' ? document.referrer : '', device: typeof navigator !== 'undefined' ? navigator.userAgent : '' }),
     })
   } catch { /* ignore */ }
 }
 
-const Header = ({ phone }) => {
-  const tel = 'tel:' + (phone || '').replace(/\s+/g, '')
-  return (
-    <header className="header">
-      <div className="container header-inner">
-        <div className="brand gold-text">DERMATICS</div>
-        <a className="btn-pill" href={tel} onClick={() => track('cta_click', { location: 'header' })}>Book Appointment: {phone}</a>
-      </div>
-    </header>
-  )
-}
+const Header = () => (
+  <header className="header">
+    <div className="container header-inner">
+      <div className="brand gold-text">DERMATICS</div>
+    </div>
+  </header>
+)
 
 const ProductCard = ({ p, onInquire }) => {
   const hasVariants = Array.isArray(p.variants) && p.variants.length > 0
@@ -133,9 +128,8 @@ const ConsultationModal = ({ open, onClose, product, variant }) => {
     e.preventDefault()
     setStatus('loading')
     try {
-      const res = await fetch('/api/consultation', {
+      const res = await apiFetch('/api/consultation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, tier: product ? `${product.tier}${variant ? ` · ${variant}` : ''}` : 'bespoke' }),
       })
       if (!res.ok) throw new Error('failed')
@@ -198,15 +192,31 @@ async function uploadFileChunked(file, onProgress) {
   for (let i = 0; i < total; i++) {
     const blob = file.slice(i * CHUNK, (i + 1) * CHUNK)
     const data = await blobToBase64(blob)
-    await fetch('/api/upload/chunk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uploadId, index: i, total, data }) })
+    await apiFetch('/api/upload/chunk', { method: 'POST', body: JSON.stringify({ uploadId, index: i, total, data }) })
     onProgress(Math.round(((i + 1) / total) * 100))
   }
-  const res = await fetch('/api/upload/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uploadId, fileName: file.name, contentType: file.type || 'application/octet-stream' }) })
+  const res = await apiFetch('/api/upload/complete', { method: 'POST', body: JSON.stringify({ uploadId, fileName: file.name, contentType: file.type || 'application/octet-stream' }) })
   const d = await res.json()
   return { fileId: d.fileId, name: file.name, type: file.type }
 }
 
 const STEPS = ['Personal Info', 'Medical Info', 'Photo Upload', 'Review & Submit']
+
+const CONSULTATION_FEE = 1999
+
+const CONSULTATION_DOCTORS = [
+  { key: 'homeopathy', label: 'Homeopathy' },
+  { key: 'naturo', label: 'Naturo' },
+  { key: 'dermatologics', label: 'Dermatologics' },
+]
+
+const CONSULTATION_BOOKING = {
+  fee: CONSULTATION_FEE,
+  doctors: CONSULTATION_DOCTORS,
+  doctorSummary: CONSULTATION_DOCTORS.map((d) => d.label).join(' · '),
+}
+
+const formatInr = (amount) => `₹${Number(amount).toLocaleString('en-IN')}`
 
 const FileThumb = ({ item, onRemove }) => (
   <div className="thumb">
@@ -217,7 +227,44 @@ const FileThumb = ({ item, onRemove }) => (
   </div>
 )
 
-function DiagnosticForm() {
+function DiagnosticBooking() {
+  const [formOpen, setFormOpen] = useState(false)
+
+  if (!formOpen) {
+    return (
+      <div className="diag-wrap" id="diagnostic">
+        <h3 className="gold-text">Book Appointment</h3>
+        <p className="diag-intro">Choose a consultation with one of our three specialists. After you select, complete the confidential diagnostic intake below.</p>
+        <div className="consult-book-wrap">
+          <button
+            type="button"
+            className="consult-book-btn"
+            onClick={() => {
+              track('cta_click', { location: 'diagnostic_book' })
+              setFormOpen(true)
+            }}
+          >
+            <span className="consult-book-cta gold-text">Book Appointment</span>
+            <p className="consult-book-lead">We have three doctors — you will consult with each of them:</p>
+            <ul className="consult-doctor-list">
+              {CONSULTATION_DOCTORS.map((d) => (
+                <li key={d.key}>{d.label}</li>
+              ))}
+            </ul>
+            <p className="consult-book-note">One consultation fee covers your sessions with Homeopathy, Naturo, and Dermatologics.</p>
+            <span className="consult-book-fee">
+              Consultation Fee · <strong className="gold-text">{formatInr(CONSULTATION_FEE)}</strong>
+            </span>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return <DiagnosticForm consultation={CONSULTATION_BOOKING} onBack={() => setFormOpen(false)} />
+}
+
+function DiagnosticForm({ consultation, onBack }) {
   const [step, setStep] = useState(1)
   const [p, setP] = useState({ fullName: '', email: '', phone: '', address: '' })
   const [m, setM] = useState({ bloodGroup: '', allergies: '', currentRoutine: '' })
@@ -249,12 +296,12 @@ function DiagnosticForm() {
   const submit = async () => {
     setStatus('loading')
     try {
-      const res = await fetch('/api/diagnostic-consultation', {
+      const res = await apiFetch('/api/diagnostic-consultation', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           ...p, ...m, consent,
+          consultationDoctors: consultation.doctors.map((d) => d.label),
+          consultationFee: consultation.fee,
           reportFileIds: reports.filter((r) => r.fileId).map((r) => r.fileId),
           facePhotoFileIds: photos.filter((r) => r.fileId).map((r) => r.fileId),
         }),
@@ -280,8 +327,15 @@ function DiagnosticForm() {
 
   return (
     <div className="diag-wrap" id="diagnostic">
+      <div className="diag-head">
+        <button type="button" className="diag-back" onClick={onBack}>&larr; Back</button>
+        <div className="diag-fee-badge">
+          <span className="diag-fee-label">Consultation Fee</span>
+          <span className="diag-fee-amount gold-text">{formatInr(consultation.fee)}</span>
+        </div>
+      </div>
       <h3 className="gold-text">Diagnostic Intake</h3>
-      <p className="diag-intro">Complete your confidential skin diagnostic so our dermatologists can design your bespoke formulation.</p>
+      <p className="diag-intro">Consultation with {consultation.doctorSummary} — complete your confidential skin diagnostic so our team can design your bespoke formulation.</p>
 
       <div className="wizard-steps">
         {STEPS.map((s, i) => (
@@ -340,6 +394,8 @@ function DiagnosticForm() {
 
       {step === 4 && (
         <div>
+          <div className="review-row"><span className="k">Doctors</span><span className="v">{consultation.doctorSummary}</span></div>
+          <div className="review-row"><span className="k">Consultation Fee</span><span className="v">{formatInr(consultation.fee)}</span></div>
           <div className="review-row"><span className="k">Full Name</span><span className="v">{p.fullName || '—'}</span></div>
           <div className="review-row"><span className="k">Phone</span><span className="v">{p.phone || '—'}</span></div>
           <div className="review-row"><span className="k">Email</span><span className="v">{p.email || '—'}</span></div>
@@ -385,12 +441,12 @@ function App() {
 
   useEffect(() => {
     if (!viewed.current) { viewed.current = true; track('page_view', {}) }
-    fetch('/api/products').then((r) => r.json()).then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
-    fetch('/api/team').then((r) => r.json()).then((d) => setTeam(Array.isArray(d) ? d : [])).catch(() => {})
-    fetch('/api/faqs').then((r) => r.json()).then((d) => setFaqs(Array.isArray(d) ? d : [])).catch(() => {})
-    fetch('/api/packages').then((r) => r.json()).then((d) => setPackages(Array.isArray(d) ? d : [])).catch(() => {})
-    fetch('/api/content').then((r) => r.json()).then((d) => { if (d && d.key) setContent(d) }).catch(() => {})
-    fetch('/api/categories').then((r) => r.json()).then((d) => {
+    apiFetch('/api/products').then((r) => r.json()).then((d) => setProducts(Array.isArray(d) ? d : [])).catch(() => {})
+    apiFetch('/api/team').then((r) => r.json()).then((d) => setTeam(Array.isArray(d) ? d : [])).catch(() => {})
+    apiFetch('/api/faqs').then((r) => r.json()).then((d) => setFaqs(Array.isArray(d) ? d : [])).catch(() => {})
+    apiFetch('/api/packages').then((r) => r.json()).then((d) => setPackages(Array.isArray(d) ? d : [])).catch(() => {})
+    apiFetch('/api/content').then((r) => r.json()).then((d) => { if (d && d.key) setContent(d) }).catch(() => {})
+    apiFetch('/api/categories').then((r) => r.json()).then((d) => {
       if (Array.isArray(d) && d.length) {
         setTabs(d.map((c) => ({ key: c.key, label: c.label })))
         const m = {}
@@ -428,16 +484,9 @@ function App() {
   return (
     <div className="page">
       <div className="ambient-glow" />
-      <Header phone={content.phone} />
+      <Header />
 
       <main className="container">
-        {active !== 'super' && (
-          <section className="hero">
-            <h1 className="gold-text">{content.heroTitle}</h1>
-            <p className="sub">{content.heroSub}</p>
-          </section>
-        )}
-
         <div className="switcher-wrap">
           <div className="switcher">
             {tabs.map((t) => (
@@ -494,7 +543,7 @@ function App() {
               ))}
             </div>
 
-            <DiagnosticForm />
+            <DiagnosticBooking />
 
             <div className="feedback-banner">
               <h3 className="gold-text">{content.feedbackTitle}</h3>

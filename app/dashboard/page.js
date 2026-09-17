@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { apiFetch, apiUrl } from '@/lib/api'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from 'recharts'
@@ -18,8 +19,7 @@ const NAV = [
 
 const TIER_LABELS = { premium: 'Premium', ultra: 'Ultra Premium', super: 'Super Ultra Premium' }
 
-const api = (url, opts = {}) =>
-  fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts }).then((r) => r.json())
+const api = (path, opts = {}) => apiFetch(path, opts).then((r) => r.json())
 
 /* ---------------- OVERVIEW ---------------- */
 function Overview() {
@@ -290,13 +290,28 @@ function PackageModal({ pkg, onClose, onSave }) {
 
 /* ---------------- DIAGNOSTIC CONSULTATIONS (admin) ---------------- */
 const STATUSES = ['New', 'In Review', 'Formulated', 'Delivered']
+
+function SecureThumb({ fileId, alt }) {
+  const [src, setSrc] = useState('')
+  useEffect(() => {
+    let objectUrl
+    apiFetch(`/api/admin/secure-file/${fileId}`)
+      .then((r) => { if (!r.ok) throw new Error('fail'); return r.blob() })
+      .then((blob) => { objectUrl = URL.createObjectURL(blob); setSrc(objectUrl) })
+      .catch(() => setSrc(''))
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [fileId])
+  if (!src) return <span style={{ color: '#a3a3a3', fontSize: 13 }}>…</span>
+  return <img src={src} alt={alt} />
+}
+
 function Diagnostics() {
   const [items, setItems] = useState([])
   const [detail, setDetail] = useState(null)
   const load = useCallback(() => { api('/api/admin/diagnostic-consultations').then((d) => setItems(Array.isArray(d) ? d : [])).catch(() => {}) }, [])
   useEffect(() => { load() }, [load])
   const setStatus = async (id, status) => { await api(`/api/admin/diagnostic-consultations/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); load(); setDetail((d) => d && d.id === id ? { ...d, status } : d) }
-  const openFile = (fileId) => { window.open(`/api/admin/secure-file/${fileId}`, '_blank', 'noopener') }
+  const openFile = (fileId) => { window.open(apiUrl(`/api/admin/secure-file/${fileId}`), '_blank', 'noopener') }
   return (
     <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
       <table className="dash-table">
@@ -341,7 +356,7 @@ function Diagnostics() {
                 {(detail.facePhotoFileIds || []).length === 0 && <span style={{ color: '#a3a3a3', fontSize: 13 }}>None</span>}
                 {(detail.facePhotoFileIds || []).map((id) => (
                   <button key={id} className="thumb" onClick={() => openFile(id)} style={{ cursor: 'pointer', border: '1px solid var(--border-glass)', padding: 0 }}>
-                    <img src={`/api/admin/secure-file/${id}`} alt="face" />
+                    <SecureThumb fileId={id} alt="face" />
                   </button>
                 ))}
               </div>

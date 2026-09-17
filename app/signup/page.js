@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api'
 
 export default function SignupPage() {
   const [name, setName] = useState('')
@@ -15,10 +16,8 @@ export default function SignupPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await apiFetch('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name, email, password }),
       })
       const data = await res.json()

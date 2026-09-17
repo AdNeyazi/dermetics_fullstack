@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,10 +17,8 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ email, password }),
       })
       const data = await res.json()
@@ -32,7 +31,7 @@ export default function LoginPage() {
       const dest = data.user?.role === 'admin' ? '/dashboard' : '/'
       for (let i = 0; i < 12; i++) {
         try {
-          const meRes = await fetch('/api/auth/me', { credentials: 'include' })
+          const meRes = await apiFetch('/api/auth/me')
           const me = await meRes.json()
           if (me.user) { window.location.href = dest; return }
         } catch { /* retry */ }

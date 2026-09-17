@@ -1140,6 +1140,120 @@ body {
   max-width: 860px;
   margin: 0 auto 90px;
 }
+.diag-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.diag-back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 8px 0;
+  text-align: left;
+  flex-shrink: 0;
+  transition: color 0.3s var(--ease-lux);
+}
+.diag-back:hover { color: var(--gold-light); }
+.diag-fee-badge {
+  text-align: right;
+  border: 1px solid var(--border-glass);
+  border-radius: 12px;
+  padding: 10px 16px;
+  background: rgba(212, 175, 55, 0.05);
+  flex-shrink: 0;
+}
+.diag-fee-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.diag-fee-amount {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.consult-book-wrap {
+  max-width: 520px;
+  margin: 10px auto 0;
+}
+.consult-book-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  border-radius: 18px;
+  padding: 28px 26px 24px;
+  background: linear-gradient(145deg, rgba(212, 175, 55, 0.12), rgba(212, 175, 55, 0.04));
+  color: var(--text-muted);
+  transition: border-color 0.35s var(--ease-lux), transform 0.35s var(--ease-lux), background 0.35s var(--ease-lux);
+}
+.consult-book-btn:hover {
+  border-color: var(--gold-primary);
+  transform: translateY(-2px);
+  background: linear-gradient(145deg, rgba(212, 175, 55, 0.18), rgba(212, 175, 55, 0.06));
+}
+.consult-book-cta {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.consult-book-lead {
+  font-size: 14px;
+  line-height: 1.55;
+  margin-bottom: 14px;
+  color: #e8e8e8;
+}
+.consult-doctor-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.consult-doctor-list li {
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 100px;
+  border: 1px solid var(--border-glass);
+  color: var(--gold-light);
+  background: rgba(0, 0, 0, 0.25);
+}
+.consult-book-note {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.consult-book-fee {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.consult-book-fee strong {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .diag-wrap h3 {
   font-family: var(--font-serif);
   font-weight: 600;
@@ -1255,6 +1369,9 @@ body {
   .process-grid { grid-template-columns: 1fr; }
   .team-grid { grid-template-columns: 1fr; }
   .switcher button { padding: 10px 16px; font-size: 11px; }
+  .diag-head { flex-direction: column; align-items: stretch; }
+  .diag-fee-badge { text-align: center; }
+  .diag-back { text-align: center; }
   .article-block { padding: 32px 26px; }
   .feedback-banner { padding: 38px 24px; }
   .container { padding: 0 18px; }
