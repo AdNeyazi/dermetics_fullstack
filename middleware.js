@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
+import { getJwtSecretBytes } from './lib/jwtSecret'
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-me')
+const secret = getJwtSecretBytes()
 
 export async function middleware(request) {
   const token = request.cookies.get('access_token')?.value

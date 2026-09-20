@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { AppHeader } from '@/components/AppHeader'
 
 export default function SignupPage() {
   const [name, setName] = useState('')
@@ -35,6 +36,8 @@ export default function SignupPage() {
   }
 
   return (
+    <>
+    <AppHeader />
     <div className="auth-page">
       <div className="ambient-glow" />
       <div className="auth-card">
@@ -62,5 +65,6 @@ export default function SignupPage() {
         <div className="auth-alt"><Link href="/">&larr; Back to store</Link></div>
       </div>
     </div>
+    </>
   )
 }

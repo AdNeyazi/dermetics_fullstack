@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { apiFetch } from '@/lib/api'
+import { AppHeader } from '@/components/AppHeader'
 
 const DEFAULT_TABS = [
   { key: 'premium', label: 'Premium' },
@@ -44,14 +45,6 @@ function track(event_type, metadata = {}) {
     })
   } catch { /* ignore */ }
 }
-
-const Header = () => (
-  <header className="header">
-    <div className="container header-inner">
-      <div className="brand gold-text">DERMATICS</div>
-    </div>
-  </header>
-)
 
 const ProductCard = ({ p, onInquire }) => {
   const hasVariants = Array.isArray(p.variants) && p.variants.length > 0
@@ -382,7 +375,7 @@ function DiagnosticForm({ consultation, onBack }) {
 
       {step === 3 && (
         <div>
-          <p className="diag-intro" style={{ marginBottom: 20 }}>Upload clear, well-lit photos of your face. Please include a <b style={{ color: '#f3e5ab' }}>front-facing</b>, <b style={{ color: '#f3e5ab' }}>left profile</b>, and <b style={{ color: '#f3e5ab' }}>right profile</b> shot for an accurate diagnostic.</p>
+          <p className="diag-intro" style={{ marginBottom: 20 }}>Upload clear, well-lit photos of your face. Please include a <b style={{ color: 'var(--gold-primary)' }}>front-facing</b>, <b style={{ color: 'var(--gold-primary)' }}>left profile</b>, and <b style={{ color: 'var(--gold-primary)' }}>right profile</b> shot for an accurate diagnostic.</p>
           <label className="file-drop">
             <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => handleFiles(e.target.files, setPhotos, photos)} />
             <div className="gold-text" style={{ fontFamily: 'var(--font-serif)', fontSize: 20 }}>Click to upload face photos</div>
@@ -484,7 +477,7 @@ function App() {
   return (
     <div className="page">
       <div className="ambient-glow" />
-      <Header />
+      <AppHeader />
 
       <main className="container">
         <div className="switcher-wrap">

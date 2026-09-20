@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { apiFetch, apiUrl } from '@/lib/api'
+import { AppHeader } from '@/components/AppHeader'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from 'recharts'
@@ -19,13 +20,22 @@ const NAV = [
 
 const TIER_LABELS = { premium: 'Premium', ultra: 'Ultra Premium', super: 'Super Ultra Premium' }
 
+const CHART_TICK = 'var(--text-secondary)'
+const CHART_TOOLTIP = {
+  background: 'var(--modal-bg)',
+  border: '1px solid var(--border-glass)',
+  borderRadius: 12,
+  color: 'var(--text-primary)',
+  boxShadow: '0 8px 24px var(--shadow-soft)',
+}
+
 const api = (path, opts = {}) => apiFetch(path, opts).then((r) => r.json())
 
 /* ---------------- OVERVIEW ---------------- */
 function Overview() {
   const [data, setData] = useState(null)
   useEffect(() => { api('/api/admin/analytics/overview').then(setData).catch(() => {}) }, [])
-  if (!data || !data.stats) return <p style={{ color: '#a3a3a3' }}>Loading analytics...</p>
+  if (!data || !data.stats) return <p style={{ color: 'var(--text-muted)' }}>Loading analytics...</p>
 
   const stats = [
     { label: 'Visitors Today', value: data.stats.visitorsToday },
@@ -57,9 +67,9 @@ function Overview() {
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="rgba(212,175,55,0.1)" vertical={false} />
-              <XAxis dataKey="date" stroke="#a3a3a3" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="#a3a3a3" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: '#0d0d0d', border: '1px solid rgba(212,175,55,0.3)', borderRadius: 12, color: '#f5f5f5' }} />
+              <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={CHART_TOOLTIP} />
               <Area type="monotone" dataKey="visitors" stroke="#d4af37" strokeWidth={2} fill="url(#gold)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -68,14 +78,14 @@ function Overview() {
         <div className="panel">
           <h3>Category Interest</h3>
           {data.tierInterest.length === 0 ? (
-            <p style={{ color: '#a3a3a3', fontSize: 14 }}>No tab interactions recorded yet.</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No tab interactions recorded yet.</p>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={data.tierInterest.map((t) => ({ ...t, label: TIER_LABELS[t.tier] || t.tier }))}>
                 <CartesianGrid stroke="rgba(212,175,55,0.1)" vertical={false} />
-                <XAxis dataKey="label" stroke="#a3a3a3" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="#a3a3a3" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip cursor={{ fill: 'rgba(212,175,55,0.08)' }} contentStyle={{ background: '#0d0d0d', border: '1px solid rgba(212,175,55,0.3)', borderRadius: 12, color: '#f5f5f5' }} />
+                <XAxis dataKey="label" stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip cursor={{ fill: 'rgba(212,175,55,0.08)' }} contentStyle={CHART_TOOLTIP} />
                 <Bar dataKey="count" fill="#d4af37" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -87,14 +97,14 @@ function Overview() {
         <div className="panel">
           <h3>Most-Viewed Products</h3>
           {data.topProducts.length === 0 ? (
-            <p style={{ color: '#a3a3a3', fontSize: 14 }}>No product views recorded yet.</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>No product views recorded yet.</p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart layout="vertical" data={data.topProducts} margin={{ left: 20 }}>
                 <CartesianGrid stroke="rgba(212,175,55,0.1)" horizontal={false} />
-                <XAxis type="number" stroke="#a3a3a3" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" stroke="#a3a3a3" fontSize={11} width={150} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: 'rgba(212,175,55,0.08)' }} contentStyle={{ background: '#0d0d0d', border: '1px solid rgba(212,175,55,0.3)', borderRadius: 12, color: '#f5f5f5' }} />
+                <XAxis type="number" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" stroke="var(--text-muted)" fontSize={11} width={150} tickLine={false} axisLine={false} />
+                <Tooltip cursor={{ fill: 'rgba(212,175,55,0.08)' }} contentStyle={CHART_TOOLTIP} />
                 <Bar dataKey="count" radius={[0, 6, 6, 0]}>
                   {data.topProducts.map((_, i) => (<Cell key={i} fill="#d4af37" />))}
                 </Bar>
@@ -114,10 +124,10 @@ function Overview() {
             const pct = Math.max((f.value / max) * 100, 4)
             return (
               <div key={f.label} style={{ marginBottom: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#e5e5e5', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-primary)', marginBottom: 8 }}>
                   <span>{f.label}</span><span className="gold-text" style={{ fontWeight: 600 }}>{f.value}</span>
                 </div>
-                <div style={{ height: 12, background: 'rgba(255,255,255,0.04)', borderRadius: 100, overflow: 'hidden' }}>
+                <div style={{ height: 12, background: 'rgba(201, 162, 39, 0.12)', borderRadius: 100, overflow: 'hidden' }}>
                   <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(135deg,#f7e7ce,#d4af37,#aa7c11)', borderRadius: 100 }} />
                 </div>
               </div>
@@ -152,24 +162,46 @@ function Products() {
         <input className="dash-search" placeholder="Search products..." value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn-sm gold" onClick={() => setEditing({ tier: 'premium', tag: '', name: '', description: '', price: '', imageUrl: '' })}>+ Add Product</button>
       </div>
-      <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-        <table className="dash-table">
-          <thead><tr><th>Image</th><th>Name</th><th>Tier</th><th>Price</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
-          <tbody>
-            {filtered.map((p) => (
-              <tr key={p.id}>
-                <td>{p.imageUrl ? <img className="tbl-img" src={p.imageUrl} alt="" /> : '—'}</td>
-                <td><div style={{ fontFamily: 'var(--font-serif)', fontSize: 17 }}>{p.name}</div><div style={{ color: '#a3a3a3', fontSize: 12 }}>{p.tag}</div></td>
-                <td><span className="badge">{TIER_LABELS[p.tier] || p.tier}</span></td>
-                <td className="gold-text" style={{ fontFamily: 'var(--font-serif)', fontSize: 20 }}>${p.price}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <button className="btn-sm" onClick={() => setEditing(p)}>Edit</button>
-                  <button className="btn-sm danger" onClick={() => del(p.id)}>Delete</button>
-                </td>
+      <div className="panel dash-table-panel">
+        <div className="dash-table-scroll is-scrollable">
+          <table className="dash-table dash-table-pro">
+            <thead>
+              <tr>
+                <th className="col-img">Image</th>
+                <th className="col-name">Product</th>
+                <th className="col-tier">Tier</th>
+                <th className="col-price">Price</th>
+                <th className="col-actions">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="dash-table-empty">No products match your search.</td>
+                </tr>
+              )}
+              {filtered.map((p) => (
+                <tr key={p.id}>
+                  <td className="col-img">
+                    {p.imageUrl ? <img className="tbl-img" src={p.imageUrl} alt="" /> : <span className="tbl-img-placeholder">—</span>}
+                  </td>
+                  <td className="col-name">
+                    <span className="dash-cell-title">{p.name}</span>
+                    {p.tag ? <span className="dash-cell-sub">{p.tag}</span> : null}
+                  </td>
+                  <td className="col-tier">
+                    <span className="badge badge-tier">{TIER_LABELS[p.tier] || p.tier}</span>
+                  </td>
+                  <td className="col-price dash-cell-price">${p.price}</td>
+                  <td className="col-actions dash-cell-actions">
+                    <button type="button" className="btn-sm" onClick={() => setEditing(p)}>Edit</button>
+                    <button type="button" className="btn-sm danger" onClick={() => del(p.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       {editing && <ProductModal product={editing} onClose={() => setEditing(null)} onSave={save} />}
     </div>
@@ -301,7 +333,7 @@ function SecureThumb({ fileId, alt }) {
       .catch(() => setSrc(''))
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [fileId])
-  if (!src) return <span style={{ color: '#a3a3a3', fontSize: 13 }}>…</span>
+  if (!src) return <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>…</span>
   return <img src={src} alt={alt} />
 }
 
@@ -313,23 +345,23 @@ function Diagnostics() {
   const setStatus = async (id, status) => { await api(`/api/admin/diagnostic-consultations/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); load(); setDetail((d) => d && d.id === id ? { ...d, status } : d) }
   const openFile = (fileId) => { window.open(apiUrl(`/api/admin/secure-file/${fileId}`), '_blank', 'noopener') }
   return (
-    <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-      <table className="dash-table">
+    <div className="panel dash-table-panel">
+      <div className="dash-table-scroll is-scrollable"><table className="dash-table">
         <thead><tr><th>Name</th><th>Contact</th><th>Files</th><th>Status</th><th>Date</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={6} style={{ color: '#a3a3a3', padding: 24 }}>No diagnostic submissions yet.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--text-muted)', padding: 24 }}>No diagnostic submissions yet.</td></tr>}
           {items.map((c) => (
             <tr key={c.id}>
               <td>{c.fullName}</td>
-              <td style={{ color: '#a3a3a3' }}>{c.phone}<br />{c.email}</td>
+              <td style={{ color: 'var(--text-muted)' }}>{c.phone}<br />{c.email}</td>
               <td>{(c.reportFileIds?.length || 0) + (c.facePhotoFileIds?.length || 0)}</td>
               <td><span className={`status-pill status-${(c.status || 'New').replace(/\s/g, '')}`}>{c.status || 'New'}</span></td>
-              <td style={{ color: '#a3a3a3', fontSize: 12 }}>{new Date(c.createdAt).toLocaleDateString()}</td>
+              <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{new Date(c.createdAt).toLocaleDateString()}</td>
               <td style={{ textAlign: 'right' }}><button className="btn-sm" onClick={() => setDetail(c)}>View</button></td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {detail && (
         <div className="modal-overlay" onClick={() => setDetail(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -337,7 +369,7 @@ function Diagnostics() {
             <h3 className="gold-text">{detail.fullName}</h3>
             <p className="modal-sub">Diagnostic Intake · {new Date(detail.createdAt).toLocaleString()}</p>
             <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#a3a3a3' }}>Status</label>
+              <label style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</label>
               <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                 {STATUSES.map((s) => (<button key={s} className={`btn-sm ${detail.status === s ? 'gold' : ''}`} onClick={() => setStatus(detail.id, s)}>{s}</button>))}
               </div>
@@ -348,12 +380,12 @@ function Diagnostics() {
             <div style={{ marginTop: 18 }}>
               <label className="file-label">Medical Reports</label>
               <div className="thumb-grid">
-                {(detail.reportFileIds || []).length === 0 && <span style={{ color: '#a3a3a3', fontSize: 13 }}>None</span>}
+                {(detail.reportFileIds || []).length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>None</span>}
                 {(detail.reportFileIds || []).map((id) => (<button key={id} className="btn-sm" onClick={() => openFile(id)}>View Report</button>))}
               </div>
               <label className="file-label">Face Photos</label>
               <div className="thumb-grid">
-                {(detail.facePhotoFileIds || []).length === 0 && <span style={{ color: '#a3a3a3', fontSize: 13 }}>None</span>}
+                {(detail.facePhotoFileIds || []).length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>None</span>}
                 {(detail.facePhotoFileIds || []).map((id) => (
                   <button key={id} className="thumb" onClick={() => openFile(id)} style={{ cursor: 'pointer', border: '1px solid var(--border-glass)', padding: 0 }}>
                     <SecureThumb fileId={id} alt="face" />
@@ -405,7 +437,7 @@ function Content() {
   const [c, setC] = useState(null)
   const [msg, setMsg] = useState('')
   useEffect(() => { api('/api/content').then(setC).catch(() => {}) }, [])
-  if (!c) return <p style={{ color: '#a3a3a3' }}>Loading content...</p>
+  if (!c) return <p style={{ color: 'var(--text-muted)' }}>Loading content...</p>
   const set = (k, v) => setC({ ...c, [k]: v })
   const setProc = (i, k, v) => { const p = [...c.process]; p[i] = { ...p[i], [k]: v }; setC({ ...c, process: p }) }
   const save = async () => { await api('/api/admin/content', { method: 'PUT', body: JSON.stringify(c) }); setMsg('Content saved!'); setTimeout(() => setMsg(''), 2500) }
@@ -472,14 +504,14 @@ function Users() {
   useEffect(() => { load() }, [load])
   const toggle = async (u) => { await api(`/api/admin/users/${u.id}`, { method: 'PUT', body: JSON.stringify({ active: !(u.active !== false) }) }); load() }
   return (
-    <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-      <table className="dash-table">
+    <div className="panel dash-table-panel">
+      <div className="dash-table-scroll is-scrollable"><table className="dash-table">
         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
         <tbody>
           {items.map((u) => (
             <tr key={u.id}>
               <td>{u.name}</td>
-              <td style={{ color: '#a3a3a3' }}>{u.email}</td>
+              <td style={{ color: 'var(--text-muted)' }}>{u.email}</td>
               <td><span className="badge">{u.role}</span></td>
               <td><span className={`badge ${u.active === false ? 'red' : 'green'}`}>{u.active === false ? 'Inactive' : 'Active'}</span></td>
               <td style={{ textAlign: 'right' }}>
@@ -488,7 +520,7 @@ function Users() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   )
 }
@@ -498,23 +530,23 @@ function Inquiries() {
   const [items, setItems] = useState([])
   useEffect(() => { api('/api/admin/consultations').then((d) => setItems(Array.isArray(d) ? d : [])).catch(() => {}) }, [])
   return (
-    <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-      <table className="dash-table">
+    <div className="panel dash-table-panel">
+      <div className="dash-table-scroll is-scrollable"><table className="dash-table">
         <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Interest</th><th>Message</th><th>Date</th></tr></thead>
         <tbody>
-          {items.length === 0 && <tr><td colSpan={6} style={{ color: '#a3a3a3', padding: 24 }}>No inquiries yet.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={6} style={{ color: 'var(--text-muted)', padding: 24 }}>No inquiries yet.</td></tr>}
           {items.map((c) => (
             <tr key={c.id}>
               <td>{c.name}</td>
               <td className="gold-text">{c.phone}</td>
-              <td style={{ color: '#a3a3a3' }}>{c.email || '—'}</td>
+              <td style={{ color: 'var(--text-muted)' }}>{c.email || '—'}</td>
               <td><span className="badge">{TIER_LABELS[c.tier] || c.tier || '—'}</span></td>
-              <td style={{ color: '#a3a3a3', maxWidth: 260 }}>{c.message || '—'}</td>
-              <td style={{ color: '#a3a3a3', fontSize: 12 }}>{new Date(c.createdAt).toLocaleDateString()}</td>
+              <td style={{ color: 'var(--text-muted)', maxWidth: 260 }}>{c.message || '—'}</td>
+              <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{new Date(c.createdAt).toLocaleDateString()}</td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   )
 }
@@ -522,8 +554,26 @@ function Inquiries() {
 /* ---------------- SHELL ---------------- */
 export default function Dashboard() {
   const [tab, setTab] = useState('overview')
+  const [navOpen, setNavOpen] = useState(false)
   const [me, setMe] = useState(null)
   useEffect(() => { api('/api/auth/me').then((d) => setMe(d.user)).catch(() => {}) }, [])
+
+  useEffect(() => {
+    if (!navOpen) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') setNavOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOpen])
+
+  useEffect(() => {
+    document.body.style.overflow = navOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [navOpen])
+
+  const selectTab = (key) => {
+    setTab(key)
+    setNavOpen(false)
+  }
 
   const logout = async () => {
     await api('/api/auth/logout', { method: 'POST' })
@@ -542,14 +592,43 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="dash">
+    <div className={`dash${navOpen ? ' dash-nav-open' : ''}`}>
       <div className="ambient-glow" />
-      <aside className="dash-sidebar">
+      <AppHeader
+        brandSuffix="Admin"
+        leftSlot={(
+          <button
+            type="button"
+            className="dash-menu-btn"
+            onClick={() => setNavOpen((open) => !open)}
+            aria-expanded={navOpen}
+            aria-controls="dash-sidebar"
+            aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+          >
+            <span className="dash-menu-icon" aria-hidden="true" />
+          </button>
+        )}
+      />
+      <button
+        type="button"
+        className="dash-nav-backdrop"
+        aria-label="Close navigation"
+        tabIndex={navOpen ? 0 : -1}
+        onClick={() => setNavOpen(false)}
+      />
+      <div className="dash-body">
+      <aside id="dash-sidebar" className="dash-sidebar">
+        <div className="dash-sidebar-head">
+          <span className="dash-sidebar-title">Navigation</span>
+          <button type="button" className="dash-sidebar-close" onClick={() => setNavOpen(false)} aria-label="Close menu">
+            ×
+          </button>
+        </div>
         <div className="dash-brand gold-text">DERMATICS</div>
         <div className="dash-brand-sub">Admin</div>
         <nav className="dash-nav">
           {NAV.map((n) => (
-            <button key={n.key} className={tab === n.key ? 'active' : ''} onClick={() => setTab(n.key)}>{n.label}</button>
+            <button key={n.key} className={tab === n.key ? 'active' : ''} onClick={() => selectTab(n.key)}>{n.label}</button>
           ))}
         </nav>
         <button className="dash-logout" onClick={logout}>Sign Out{me ? ` (${me.name})` : ''}</button>
@@ -567,6 +646,7 @@ export default function Dashboard() {
         {tab === 'inquiries' && <Inquiries />}
         {tab === 'diagnostics' && <Diagnostics />}
       </main>
+      </div>
     </div>
   )
 }

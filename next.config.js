@@ -22,6 +22,14 @@ const nextConfig = {
     maxInactiveAge: 10000,
     pagesBufferLength: 2,
   },
+  // Vercel: set API_PROXY_TARGET=https://derma.crystalclearcraft.com and
+  // NEXT_PUBLIC_API_URL=same-origin so auth cookies work on the UI domain.
+  async rewrites() {
+    const backend = process.env.API_PROXY_TARGET
+    if (!backend) return []
+    const base = backend.replace(/\/$/, '')
+    return [{ source: '/api/:path*', destination: `${base}/api/:path*` }]
+  },
   async headers() {
     return [
       {

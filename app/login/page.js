@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { AppHeader } from '@/components/AppHeader'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -45,6 +46,8 @@ export default function LoginPage() {
   }
 
   return (
+    <>
+    <AppHeader />
     <div className="auth-page">
       <div className="ambient-glow" />
       <div className="auth-card">
@@ -68,5 +71,6 @@ export default function LoginPage() {
         <div className="auth-alt"><Link href="/">&larr; Back to store</Link></div>
       </div>
     </div>
+    </>
   )
 }
